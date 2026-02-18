@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Horas de Trabajo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1><i class="fa-solid fa-clock"></i> WorkFlow</h1>
+            <p>Gestiona tu tiempo con estilo</p>
+        </header>
+
+        <main>
+            <section class="dashboard">
+                <div class="card glass">
+                    <h3>Total Hoy</h3>
+                    <div class="stat" id="total-today">0h 0m</div>
+                </div>
+                <div class="card glass">
+                    <h3>Total Semana</h3>
+                    <div class="stat" id="total-week">0h 0m</div>
+                </div>
+            </section>
+
+            <section class="input-section glass">
+                <h2>Nueva Entrada</h2>
+                <form id="work-form">
+                    <div class="form-group">
+                        <label for="date">Fecha</label>
+                        <input type="date" id="date" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="start-time">Inicio</label>
+                            <input type="time" id="start-time" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="end-time">Fin</label>
+                            <input type="time" id="end-time" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Descripción</label>
+                        <input type="text" id="description" placeholder="¿En qué trabajaste?" autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fa-solid fa-plus"></i> Agregar
+                    </button>
+                    <div id="form-error" class="error-msg"></div>
+                </form>
+            </section>
+
+            <section class="entries-section glass">
+                <h2>Historial</h2>
+                <div id="entries-list" class="entries-list">
+                    <!-- Entries will be injected here -->
+                    <div class="empty-state">
+                        <i class="fa-regular fa-calendar-xmark"></i>
+                        <p>No hay registros aún</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
