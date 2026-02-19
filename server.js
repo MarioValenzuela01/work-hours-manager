@@ -66,6 +66,38 @@ app.post('/api/hours', (req, res) => {
     }
 });
 
+// PUT update entry
+app.put('/api/hours/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, startTime, endTime, description } = req.body;
+
+        if (!date || !startTime || !endTime) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        let hours = readData();
+        const index = hours.findIndex(entry => entry.id === id);
+
+        if (index === -1) {
+            return res.status(404).json({ error: 'Entry not found' });
+        }
+
+        hours[index] = {
+            ...hours[index],
+            date,
+            startTime,
+            endTime,
+            description: description || ''
+        };
+
+        writeData(hours);
+        res.json(hours[index]);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update data' });
+    }
+});
+
 // DELETE entry
 app.delete('/api/hours/:id', (req, res) => {
     try {

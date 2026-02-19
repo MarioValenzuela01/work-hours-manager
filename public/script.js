@@ -4,9 +4,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalTodayEl = document.getElementById('total-today');
     const totalWeekEl = document.getElementById('total-week');
     const formError = document.getElementById('form-error');
+    const submitBtn = workForm.querySelector('button[type="submit"]');
+
+    let editingId = null;
 
     // Set default date to today
-    document.getElementById('date').valueAsDate = new Date();
+    resetForm();
 
     // Fetch and display entries on load
     fetchEntries();
@@ -30,18 +33,26 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const newEntry = { date, startTime, endTime, description };
+        const entryData = { date, startTime, endTime, description };
 
         try {
-            const response = await fetch('/api/hours', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newEntry)
-            });
+            let response;
+            if (editingId) {
+                response = await fetch(`/api/hours/${editingId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(entryData)
+                });
+            } else {
+                response = await fetch('/api/hours', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(entryData)
+                });
+            }
 
             if (response.ok) {
-                workForm.reset();
-                document.getElementById('date').valueAsDate = new Date(); // Reset date to today
+                resetForm();
                 fetchEntries();
             } else {
                 showError('Error al guardar la entrada');
@@ -128,8 +139,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="day-actions">
                             <span class="duration-pill">${formatDuration(duration)}</span>
+                            <button class="btn-edit-mini" onclick="editEntry('${entry.id}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${escapeHtml(entry.description || '')}')" title="Editar">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
                             <button class="btn-delete-mini" onclick="deleteEntry('${entry.id}')" title="Eliminar">
-                                <i class="fa-solid fa-times"></i>
+                                <i class="fa-solid fa-trash"></i>
                             </button>
                         </div>
                     </div>
@@ -177,6 +191,51 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error deleting entry:', error);
         }
     };
+
+    window.editEntry = (id, date, start, end, desc) => {
+        editingId = id;
+        document.getElementById('date').value = date;
+        document.getElementById('start-time').value = start;
+        document.getElementById('end-time').value = end;
+        document.getElementById('description').value = desc;
+
+        submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Actualizar';
+        submitBtn.classList.add('btn-update');
+
+        // Add cancel button if not exists
+        if (!document.getElementById('btn-cancel')) {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.id = 'btn-cancel';
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn-secondary';
+            cancelBtn.innerHTML = '<i class="fa-solid fa-times"></i> Cancelar';
+            cancelBtn.onclick = resetForm;
+            workForm.appendChild(cancelBtn);
+        }
+
+        document.querySelector('.input-section').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    function resetForm() {
+        workForm.reset();
+        document.getElementById('date').valueAsDate = new Date();
+        editingId = null;
+        submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Agregar';
+        submitBtn.classList.remove('btn-update');
+
+        const cancelBtn = document.getElementById('btn-cancel');
+        if (cancelBtn) cancelBtn.remove();
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
 
     function updateDashboard(entries) {
         const today = new Date().toISOString().split('T')[0];

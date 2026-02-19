@@ -469,4 +469,47 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
         border-left: 2px solid var(--glass-border);
         padding-left: 1rem;
     }
+}/* Edit Logic Styles */
+.btn-edit-mini {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+    margin-right: 0.5rem;
+}
+
+.btn-edit-mini:hover {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+.btn-update {
+    background: linear-gradient(135deg, var(--accent-color), #0ea5e9);
+    box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4);
+}
+
+.btn-secondary {
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.875rem;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
 }
