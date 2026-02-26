@@ -1,39 +1,28 @@
+require('dotenv').config();
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const mongoose = require('mongoose');
+const cors = require('cors');
+
+const Hour = require('./models/hours.model'); // ✅ importa el modelo
+
 const app = express();
-const PORT = 3000;
 
-const DATA_FILE = path.join(__dirname, 'data', 'hours.json');
+const PORT = process.env.PORT || 3000;       // ✅ define port
+const MONGO_URI = process.env.MONGO_URI;     // ✅ toma del .env
 
-app.use(express.static('public'));
+app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
-// Helper to read data
-const readData = () => {
-    if (!fs.existsSync(DATA_FILE)) {
-        return [];
-    }
-    const data = fs.readFileSync(DATA_FILE);
-    return JSON.parse(data);
-};
-
-// Helper to write data
-const writeData = (data) => {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-};
-
-// Ensure data directory exists
-if (!fs.existsSync(path.dirname(DATA_FILE))) {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-}
-
-// API Endpoints
+// Connect Mongo
+mongoose.connect(MONGO_URI)
+    .then(() => console.log('✅ Mongo Connected'))
+    .catch(err => console.log(err));
 
 // GET all hours
-app.get('/api/hours', (req, res) => {
+app.get('/api/hours', async (req, res) => {
     try {
-        const hours = readData();
+        const hours = await Hour.find().sort({ date: -1, startTime: -1 });
         res.json(hours);
     } catch (error) {
         res.status(500).json({ error: 'Failed to read data' });
@@ -41,24 +30,23 @@ app.get('/api/hours', (req, res) => {
 });
 
 // POST new entry
-app.post('/api/hours', (req, res) => {
+app.post('/api/hours', async (req, res) => {
     try {
         const { date, startTime, endTime, description } = req.body;
+
         if (!date || !startTime || !endTime) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        const newEntry = {
+        const newEntry = new Hour({
             id: Date.now().toString(),
             date,
             startTime,
             endTime,
             description: description || ''
-        };
+        });
 
-        const hours = readData();
-        hours.push(newEntry);
-        writeData(hours);
+        await newEntry.save();
 
         res.status(201).json(newEntry);
     } catch (error) {
@@ -67,7 +55,7 @@ app.post('/api/hours', (req, res) => {
 });
 
 // PUT update entry
-app.put('/api/hours/:id', (req, res) => {
+app.put('/api/hours/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { date, startTime, endTime, description } = req.body;
@@ -76,41 +64,33 @@ app.put('/api/hours/:id', (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        let hours = readData();
-        const index = hours.findIndex(entry => entry.id === id);
+        const updated = await Hour.findOneAndUpdate(
+            { id },
+            { date, startTime, endTime, description: description || '' },
+            { new: true }
+        );
 
-        if (index === -1) {
+        if (!updated) {
             return res.status(404).json({ error: 'Entry not found' });
         }
 
-        hours[index] = {
-            ...hours[index],
-            date,
-            startTime,
-            endTime,
-            description: description || ''
-        };
-
-        writeData(hours);
-        res.json(hours[index]);
+        res.json(updated);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update data' });
     }
 });
 
 // DELETE entry
-app.delete('/api/hours/:id', (req, res) => {
+app.delete('/api/hours/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        let hours = readData();
-        const initialLength = hours.length;
-        hours = hours.filter(entry => entry.id !== id);
 
-        if (hours.length === initialLength) {
+        const result = await Hour.deleteOne({ id });
+
+        if (result.deletedCount === 0) {
             return res.status(404).json({ error: 'Entry not found' });
         }
 
-        writeData(hours);
         res.json({ message: 'Entry deleted' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete data' });
