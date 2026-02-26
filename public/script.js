@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
         entries.forEach(entry => {
             const date = new Date(entry.date + 'T00:00:00');
             const weekStart = getStartOfWeek(date);
-            const weekKey = weekStart.toISOString().split('T')[0];
+            const weekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
 
             if (!weeks[weekKey]) {
                 weeks[weekKey] = {
@@ -238,16 +238,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateDashboard(entries) {
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         let todayMinutes = 0;
         let weekMinutes = 0;
 
-        // Simple "This Week" calculation (Monday to Sunday)
-        const now = new Date();
-        const dayOfWeek = now.getDay() || 7; // 1 (Mon) to 7 (Sun)
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - dayOfWeek + 1);
-        startOfWeek.setHours(0, 0, 0, 0);
+        const startOfWeek = getStartOfWeek(now);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(endOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
 
         entries.forEach(entry => {
             const duration = calculateDuration(entry.startTime, entry.endTime);
@@ -258,15 +257,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Weekly total
-            const entryDate = new Date(entry.date);
-            // Reset entry time to midnight for comparison
-            const entryDateMidnight = new Date(entryDate);
-            entryDateMidnight.setHours(0, 0, 0, 0);
-
-            // Adjust for timezone offset issue with simple date strings creates defaults to UTC 
-            // We'll just compare date strings for simplicity if "week" logic is complex, 
-            // but let's do a rough check if it is >= startOfWeek
-            if (entryDateMidnight >= startOfWeek) {
+            const entryDate = new Date(entry.date + 'T00:00:00');
+            if (entryDate >= startOfWeek && entryDate <= endOfWeek) {
                 weekMinutes += duration;
             }
         });
