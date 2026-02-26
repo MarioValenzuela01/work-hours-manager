@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             weekCard.innerHTML = `
                 <div class="week-header">
-                    <h3>Semana: ${dateRange}</h3>
+                    <h3>Week: ${dateRange}</h3>
                     <span class="week-total">${formatDuration(week.totalMinutes)}</span>
                 </div>
                 <div class="week-entries">
@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function formatDateShort(date) {
-        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
     }
 
     window.deleteEntry = async (id) => {
@@ -199,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('end-time').value = end;
         document.getElementById('description').value = desc;
 
-        submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Actualizar';
+        submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Update';
         submitBtn.classList.add('btn-update');
 
         // Add cancel button if not exists
@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelBtn.id = 'btn-cancel';
             cancelBtn.type = 'button';
             cancelBtn.className = 'btn-secondary';
-            cancelBtn.innerHTML = '<i class="fa-solid fa-times"></i> Cancelar';
+            cancelBtn.innerHTML = '<i class="fa-solid fa-times"></i> Cancel';
             cancelBtn.onclick = resetForm;
             workForm.appendChild(cancelBtn);
         }
@@ -218,9 +218,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function resetForm() {
         workForm.reset();
-        document.getElementById('date').valueAsDate = new Date();
+        const d = new Date();
+        document.getElementById('date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         editingId = null;
-        submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Agregar';
+        submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
         submitBtn.classList.remove('btn-update');
 
         const cancelBtn = document.getElementById('btn-cancel');
@@ -285,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const options = { weekday: 'short', day: 'numeric', month: 'short' };
         // Validar y prevenir problemas de timezone agregando T00:00:00
         const date = new Date(`${dateString}T00:00:00`);
-        return date.toLocaleDateString('es-ES', options);
+        return date.toLocaleDateString('en-US', options);
     }
 
     function showError(msg) {
