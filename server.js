@@ -4,6 +4,8 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 
 const Hour = require('./models/hours.model'); // ✅ importa el modelo
+const authRoutes = require('./routes/auth.routes');
+const { requireAuth } = require('./middleware/auth.middleware');
 
 const app = express();
 
@@ -14,15 +16,17 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+app.use('/api/auth', authRoutes);
+
 // Connect Mongo
 mongoose.connect(MONGO_URI)
     .then(() => console.log('✅ Mongo Connected'))
     .catch(err => console.log(err));
 
 // GET all hours
-app.get('/api/hours', async (req, res) => {
+app.get('/api/hours', requireAuth, async (req, res) => {
     try {
-        const hours = await Hour.find().sort({ date: -1, startTime: -1 });
+        const hours = await Hour.find({ userId: req.userId }).sort({ date: -1, startTime: -1 });
         res.json(hours);
     } catch (error) {
         res.status(500).json({ error: 'Failed to read data' });
@@ -30,7 +34,7 @@ app.get('/api/hours', async (req, res) => {
 });
 
 // POST new entry
-app.post('/api/hours', async (req, res) => {
+app.post('/api/hours', requireAuth, async (req, res) => {
     try {
         const { date, startTime, endTime, description } = req.body;
 
@@ -40,6 +44,7 @@ app.post('/api/hours', async (req, res) => {
 
         const newEntry = new Hour({
             id: Date.now().toString(),
+            userId: req.userId,
             date,
             startTime,
             endTime,
@@ -55,7 +60,7 @@ app.post('/api/hours', async (req, res) => {
 });
 
 // PUT update entry
-app.put('/api/hours/:id', async (req, res) => {
+app.put('/api/hours/:id', requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
         const { date, startTime, endTime, description } = req.body;
@@ -65,7 +70,7 @@ app.put('/api/hours/:id', async (req, res) => {
         }
 
         const updated = await Hour.findOneAndUpdate(
-            { id },
+            { id, userId: req.userId },
             { date, startTime, endTime, description: description || '' },
             { new: true }
         );
@@ -81,11 +86,11 @@ app.put('/api/hours/:id', async (req, res) => {
 });
 
 // DELETE entry
-app.delete('/api/hours/:id', async (req, res) => {
+app.delete('/api/hours/:id', requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
 
-        const result = await Hour.deleteOne({ id });
+        const result = await Hour.deleteOne({ id, userId: req.userId });
 
         if (result.deletedCount === 0) {
             return res.status(404).json({ error: 'Entry not found' });

@@ -7,6 +7,69 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBtn = workForm.querySelector('button[type="submit"]');
 
     let editingId = null;
+    let allEntries = [];
+
+    // Check for token before anything else
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+    };
+
+    // Logout logic
+    document.getElementById('btn-logout').addEventListener('click', () => {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+    });
+
+    // Password modal logic
+    const modal = document.getElementById('password-modal');
+    document.getElementById('btn-change-password').addEventListener('click', () => {
+        modal.style.display = 'flex';
+    });
+
+    document.getElementById('close-modal').addEventListener('click', () => {
+        modal.style.display = 'none';
+        document.getElementById('password-form').reset();
+        document.getElementById('password-error').textContent = '';
+    });
+
+    document.getElementById('password-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const oldPassword = document.getElementById('old-password').value;
+        const newPassword = document.getElementById('new-password').value;
+        const errEl = document.getElementById('password-error');
+
+        try {
+            const res = await fetch('/api/auth/password', {
+                method: 'PUT',
+                headers: authHeaders,
+                body: JSON.stringify({ oldPassword, newPassword })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                errEl.style.color = '#10b981';
+                errEl.textContent = 'Password updated!';
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                    document.getElementById('password-form').reset();
+                    errEl.textContent = '';
+                }, 2000);
+            } else {
+                errEl.style.color = '#ef4444';
+                errEl.textContent = data.message || 'Error updating password';
+            }
+        } catch (e) {
+            errEl.style.color = '#ef4444';
+            errEl.textContent = 'Connection error';
+        }
+    });
 
     // Set default date to today
     resetForm();
@@ -40,13 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (editingId) {
                 response = await fetch(`/api/hours/${editingId}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: authHeaders,
                     body: JSON.stringify(entryData)
                 });
             } else {
                 response = await fetch('/api/hours', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: authHeaders,
                     body: JSON.stringify(entryData)
                 });
             }
@@ -65,8 +128,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchEntries() {
         try {
-            const response = await fetch('/api/hours');
+            const response = await fetch('/api/hours', { headers: authHeaders });
+            if (response.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+                return;
+            }
             const entries = await response.json();
+            allEntries = entries;
             renderEntries(entries);
             updateDashboard(entries);
         } catch (error) {
@@ -153,7 +222,12 @@ document.addEventListener('DOMContentLoaded', () => {
             weekCard.innerHTML = `
                 <div class="week-header">
                     <h3>Week: ${dateRange}</h3>
-                    <span class="week-total">${formatDuration(week.totalMinutes)}</span>
+                    <div style="display: flex; gap: 1rem; align-items: center;">
+                        <span class="week-total">${formatDuration(week.totalMinutes)}</span>
+                        <button class="btn-copy-mini" onclick="copyWeekToClipboard('${weekKey}')" title="Copiar tabla para correo">
+                            <i class="fa-solid fa-copy"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="week-entries">
                     ${entriesHtml}
@@ -181,7 +255,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!confirm('¿Estás seguro de eliminar esta entrada?')) return;
 
         try {
-            const response = await fetch(`/api/hours/${id}`, { method: 'DELETE' });
+            const response = await fetch(`/api/hours/${id}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
             if (response.ok) {
                 fetchEntries();
             } else {
@@ -220,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
         workForm.reset();
         const d = new Date();
         document.getElementById('date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        document.getElementById('description').value = 'CornerStone';
         editingId = null;
         submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
         submitBtn.classList.remove('btn-update');
@@ -295,4 +373,130 @@ document.addEventListener('DOMContentLoaded', () => {
             formError.textContent = '';
         }, 3000);
     }
+
+    function formatTimeAMPM(time24) {
+        const [hour, minute] = time24.split(':');
+        let h = parseInt(hour, 10);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${minute} ${ampm}`;
+    }
+
+    window.copyWeekToClipboard = async (weekKey) => {
+        try {
+            const sortedEntries = [...allEntries].sort((a, b) => {
+                const dateA = new Date(`${a.date}T${a.startTime}`);
+                const dateB = new Date(`${b.date}T${b.startTime}`);
+                return dateA - dateB;
+            });
+
+            let weekEntries = [];
+            let totalMinutes = 0;
+
+            sortedEntries.forEach(entry => {
+                const date = new Date(entry.date + 'T00:00:00');
+                const weekStart = getStartOfWeek(date);
+                const currentWeekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+
+                if (currentWeekKey === weekKey) {
+                    weekEntries.push(entry);
+                    totalMinutes += calculateDuration(entry.startTime, entry.endTime);
+                }
+            });
+
+            if (weekEntries.length === 0) return;
+
+            const weekStart = new Date(weekEntries[0].date + 'T00:00:00');
+            const weekStartObj = getStartOfWeek(weekStart);
+            const weekEndObj = new Date(weekStartObj);
+            weekEndObj.setDate(weekEndObj.getDate() + 6);
+            const dateRange = `${formatDateShort(weekStartObj)} - ${formatDateShort(weekEndObj)}`;
+
+            let textContent = `Hours Report: ${dateRange}\n\n`;
+            textContent += `Date\tStart\tEnd\tDuration\n`;
+            textContent += `----------------------------------------------------------\n`;
+
+            let htmlContent = `
+                <div style="font-family: Arial, sans-serif; color: #333;">
+                    <h2 style="color: #4f46e5;">Hours Report: ${dateRange}</h2>
+                    <table style="border-collapse: collapse; width: 100%; max-width: 800px; text-align: left;">
+                        <thead>
+                            <tr style="background-color: #f3f4f6; color: #111;">
+                                <th style="padding: 10px; border: 1px solid #d1d5db;">Date</th>
+                                <th style="padding: 10px; border: 1px solid #d1d5db;">Start</th>
+                                <th style="padding: 10px; border: 1px solid #d1d5db;">End</th>
+                                <th style="padding: 10px; border: 1px solid #d1d5db;">Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            weekEntries.forEach(entry => {
+                const duration = calculateDuration(entry.startTime, entry.endTime);
+                const durationStr = formatDuration(duration);
+                // We use en-US format to make the output match English convention
+                const entryDateObj = new Date(`${entry.date}T00:00:00`);
+                const dateStr = entryDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+                const startTime12 = formatTimeAMPM(entry.startTime);
+                const endTime12 = formatTimeAMPM(entry.endTime);
+
+                textContent += `${dateStr}\t${startTime12}\t${endTime12}\t${durationStr}\n`;
+
+                htmlContent += `
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #d1d5db;">${dateStr}</td>
+                        <td style="padding: 10px; border: 1px solid #d1d5db;">${startTime12}</td>
+                        <td style="padding: 10px; border: 1px solid #d1d5db;">${endTime12}</td>
+                        <td style="padding: 10px; border: 1px solid #d1d5db;">${durationStr}</td>
+                    </tr>
+                `;
+            });
+
+            const totalDecimalHours = Number((totalMinutes / 60).toFixed(2)) + ' hours';
+
+            textContent += `----------------------------------------------------------\n`;
+            textContent += `Total weekly hours:\t\t\t${totalDecimalHours}\n`;
+
+            htmlContent += `
+                            <tr style="background-color: #e5e7eb; font-weight: bold;">
+                                <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; text-align: right;">Total weekly hours:</td>
+                                <td style="padding: 10px; border: 1px solid #d1d5db;">${totalDecimalHours}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            if (navigator.clipboard && window.ClipboardItem) {
+                const textBlob = new Blob([textContent], { type: 'text/plain' });
+                const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+                const clipboardItem = new ClipboardItem({
+                    'text/plain': textBlob,
+                    'text/html': htmlBlob
+                });
+                await navigator.clipboard.write([clipboardItem]);
+            } else {
+                await navigator.clipboard.writeText(textContent);
+            }
+
+            const btn = document.querySelector(`button[onclick="copyWeekToClipboard('${weekKey}')"]`);
+            if (btn) {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado';
+                btn.style.background = '#10b981';
+                btn.style.borderColor = '#10b981';
+                btn.style.color = '#fff';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            }
+
+        } catch (error) {
+            console.error('Error copying to clipboard:', error);
+            alert('Error al copiar al portapapeles. Asegúrate de tener permisos o estar en un entorno seguro.');
+        }
+    };
 });

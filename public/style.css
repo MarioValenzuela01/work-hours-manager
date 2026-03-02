@@ -73,9 +73,19 @@ body {
 }
 
 @keyframes float {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(30px, -50px) scale(1.1); }
-    66% { transform: translate(-20px, 20px) scale(0.9); }
+
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    33% {
+        transform: translate(30px, -50px) scale(1.1);
+    }
+
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
 }
 
 .container {
@@ -95,6 +105,7 @@ header h1 {
     font-weight: 700;
     margin-bottom: 0.5rem;
     background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -326,32 +337,51 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 @keyframes fadeInDown {
-    from { opacity: 0; transform: translateY(-20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @media (max-width: 600px) {
     .container {
         padding: 1rem;
     }
-    .form-row, .dashboard {
+
+    .form-row,
+    .dashboard {
         grid-template-columns: 1fr;
     }
+
     .entry-card {
         flex-direction: column;
         align-items: flex-start;
         gap: 1rem;
     }
+
     .entry-actions {
         width: 100%;
         justify-content: space-between;
     }
 }
+
 /* Weekly View Styles */
 .week-card {
     margin-bottom: 2rem;
@@ -469,7 +499,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
         border-left: 2px solid var(--glass-border);
         padding-left: 1rem;
     }
-}/* Edit Logic Styles */
+}
+
+/* Edit Logic Styles */
 .btn-edit-mini {
     background: none;
     border: none;
@@ -484,6 +516,28 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .btn-edit-mini:hover {
     opacity: 1;
     color: var(--accent-color);
+}
+
+.btn-copy-mini {
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid var(--primary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.btn-copy-mini:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
 }
 
 .btn-update {
