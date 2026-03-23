@@ -12,8 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if user is already logged in
     const token = localStorage.getItem('token');
+    const role = localStorage.getItem('role');
     if (token) {
-        window.location.href = 'index.html';
+        if (role === 'admin') {
+            window.location.href = 'admin.html';
+        } else {
+            window.location.href = 'index.html';
+        }
     }
 
     authToggleLink.addEventListener('click', () => {
@@ -51,7 +56,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (response.ok) {
                 if (isLogin) {
                     localStorage.setItem('token', data.token);
-                    window.location.href = 'index.html';
+                    localStorage.setItem('username', username);
+                    if (data.role) {
+                        localStorage.setItem('role', data.role);
+                    } else {
+                        localStorage.setItem('role', 'user');
+                    }
+
+                    if (data.role === 'admin') {
+                        window.location.href = 'admin.html';
+                    } else {
+                        window.location.href = 'index.html';
+                    }
                 } else {
                     // Registration successful, auto-login or switch to login
                     isLogin = true;

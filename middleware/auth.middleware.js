@@ -14,10 +14,18 @@ const requireAuth = (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = payload.userId;
+    req.role = payload.role; // Extract role from JWT
     next();
   } catch (err) {
     return res.status(401).json({ ok: false, message: 'Invalid token' });
   }
 };
 
-module.exports = { requireAuth };
+const requireAdmin = (req, res, next) => {
+  if (req.role !== 'admin') {
+    return res.status(403).json({ ok: false, message: 'Forbidden: Admin access required' });
+  }
+  next();
+};
+
+module.exports = { requireAuth, requireAdmin };

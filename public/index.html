@@ -26,6 +26,10 @@
                 <p>Manage your Time</p>
             </div>
             <div class="user-actions" style="display: flex; gap: 1rem;">
+                <button id="btn-admin-panel" class="btn-secondary"
+                    style="font-size: 0.9rem; padding: 0.5rem 1rem; display: none;">
+                    <i class="fa-solid fa-users-cog"></i> Admin
+                </button>
                 <button id="btn-change-password" class="btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;">
                     <i class="fa-solid fa-key"></i> Key
                 </button>
@@ -91,9 +95,13 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="description">Description</label>
+                        <label for="description">Activity</label>
                         <input type="text" id="description" value="CornerStone" placeholder="What did you work on?"
                             autocomplete="off">
+                    </div>
+                    <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
+                        <input type="checkbox" id="is-day-off" style="width: 1.2rem; height: 1.2rem; cursor: pointer;">
+                        <label for="is-day-off" style="margin: 0; cursor: pointer; font-weight: 600;">Day Off</label>
                     </div>
                     <button type="submit" class="btn-primary">
                         <i class="fa-solid fa-plus"></i> Add
@@ -111,7 +119,6 @@
                         <p>No entries yet</p>
                     </div>
                 </div>
-            </section>
         </main>
     </div>
 

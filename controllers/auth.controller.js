@@ -39,7 +39,7 @@ const login = async (req, res) => {
 
   // ✅ Crear JWT
   const token = jwt.sign(
-    { userId: user._id.toString() },
+    { userId: user._id.toString(), role: user.role },
     process.env.JWT_SECRET,
     { expiresIn: '2h' }
   );
@@ -47,7 +47,8 @@ const login = async (req, res) => {
   return res.status(200).json({
     ok: true,
     message: 'Login OK',
-    token
+    token,
+    role: user.role
   });
 };
 

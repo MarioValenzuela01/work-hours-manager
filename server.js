@@ -5,6 +5,7 @@ const cors = require('cors');
 
 const Hour = require('./models/hours.model'); // ✅ importa el modelo
 const authRoutes = require('./routes/auth.routes');
+const adminRoutes = require('./routes/admin.routes');
 const { requireAuth } = require('./middleware/auth.middleware');
 
 const app = express();
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Connect Mongo
 mongoose.connect(MONGO_URI)
