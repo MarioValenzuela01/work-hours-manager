@@ -83,30 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Day Off Logic
-    const isDayOffToggle = document.getElementById('is-day-off');
-    const startTimeInput = document.getElementById('start-time');
-    const endTimeInput = document.getElementById('end-time');
-    const descInput = document.getElementById('description');
-
-    if (isDayOffToggle) {
-        isDayOffToggle.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                startTimeInput.value = '00:00';
-                endTimeInput.value = '00:00';
-                startTimeInput.disabled = true;
-                endTimeInput.disabled = true;
-                descInput.value = 'Day Off';
-            } else {
-                startTimeInput.value = '';
-                endTimeInput.value = '';
-                startTimeInput.disabled = false;
-                endTimeInput.disabled = false;
-                descInput.value = 'CornerStone';
-            }
-        });
-    }
-
     // Set default date to today
     resetForm();
 
@@ -118,22 +94,16 @@ document.addEventListener('DOMContentLoaded', () => {
         formError.textContent = '';
 
         const date = document.getElementById('date').value;
-        let startTime = document.getElementById('start-time').value;
-        let endTime = document.getElementById('end-time').value;
+        const startTime = document.getElementById('start-time').value;
+        const endTime = document.getElementById('end-time').value;
         const description = document.getElementById('description').value;
-
-        const isDayOff = document.getElementById('is-day-off')?.checked;
-        if (isDayOff) {
-            startTime = '00:00';
-            endTime = '00:00';
-        }
 
         if (!date || !startTime || !endTime) {
             showError('Por favor completa todos los campos requeridos');
             return;
         }
 
-        if (startTime >= endTime && !(startTime === '00:00' && endTime === '00:00')) {
+        if (startTime >= endTime) {
             showError('La hora de fin debe ser posterior a la de inicio');
             return;
         }
@@ -241,14 +211,11 @@ document.addEventListener('DOMContentLoaded', () => {
             let entriesHtml = '';
             week.entries.forEach(entry => {
                 const duration = calculateDuration(entry.startTime, entry.endTime);
-                const isDayOff = entry.startTime === '00:00' && entry.endTime === '00:00';
-                const timeDisplay = isDayOff ? 'Day Off' : `${entry.startTime} - ${entry.endTime}`;
-                
                 entriesHtml += `
                     <div class="day-row">
                         <div class="day-info">
                             <span class="day-date">${formatDate(entry.date)}</span>
-                            <span class="day-time">${timeDisplay}</span>
+                            <span class="day-time">${entry.startTime} - ${entry.endTime}</span>
                             <span class="day-desc">${entry.description || ''}</span>
                         </div>
                         <div class="day-actions">
@@ -321,19 +288,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('end-time').value = end;
         document.getElementById('description').value = desc;
 
-        const isDayOffToggle = document.getElementById('is-day-off');
-        if (isDayOffToggle) {
-            if (start === '00:00' && end === '00:00') {
-                isDayOffToggle.checked = true;
-                document.getElementById('start-time').disabled = true;
-                document.getElementById('end-time').disabled = true;
-            } else {
-                isDayOffToggle.checked = false;
-                document.getElementById('start-time').disabled = false;
-                document.getElementById('end-time').disabled = false;
-            }
-        }
-
         submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Update';
         submitBtn.classList.add('btn-update');
 
@@ -356,14 +310,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const d = new Date();
         document.getElementById('date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         document.getElementById('description').value = 'CornerStone';
-        
-        const isDayOffToggle = document.getElementById('is-day-off');
-        if (isDayOffToggle) {
-            isDayOffToggle.checked = false;
-            document.getElementById('start-time').disabled = false;
-            document.getElementById('end-time').disabled = false;
-        }
-        
         editingId = null;
         submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
         submitBtn.classList.remove('btn-update');
@@ -480,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let textContent = `Hello, This is my TimeSheet :\n\n`;
             textContent += `Hours Report: ${dateRange}\n\n`;
-            textContent += `Date\tActivity\tStart\tEnd\tDuration\n`;
+            textContent += `Date\tStart\tEnd\tDuration\n`;
             textContent += `----------------------------------------------------------\n`;
 
             let htmlContent = `
@@ -491,7 +437,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         <thead>
                             <tr style="background-color: #f3f4f6; color: #111;">
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">Date</th>
-                                <th style="padding: 10px; border: 1px solid #d1d5db;">Activity</th>
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">Start</th>
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">End</th>
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">Duration</th>
@@ -502,29 +447,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             weekEntries.forEach(entry => {
                 const duration = calculateDuration(entry.startTime, entry.endTime);
-                let durationStr = formatDuration(duration);
+                const durationStr = formatDuration(duration);
                 // We use en-US format to make the output match English convention
                 const entryDateObj = new Date(`${entry.date}T00:00:00`);
                 const dateStr = entryDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
-                
-                let startTime12 = formatTimeAMPM(entry.startTime);
-                let endTime12 = formatTimeAMPM(entry.endTime);
-                
-                const isDayOff = entry.startTime === '00:00' && entry.endTime === '00:00';
-                if (isDayOff) {
-                    startTime12 = 'Day Off';
-                    endTime12 = 'Day Off';
-                    durationStr = '0h 0m';
-                }
-                
-                const activityStr = entry.description || 'CornerStone';
+                const startTime12 = formatTimeAMPM(entry.startTime);
+                const endTime12 = formatTimeAMPM(entry.endTime);
 
-                textContent += `${dateStr}\t${activityStr}\t${startTime12}\t${endTime12}\t${durationStr}\n`;
+                textContent += `${dateStr}\t${startTime12}\t${endTime12}\t${durationStr}\n`;
 
                 htmlContent += `
                     <tr>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${dateStr}</td>
-                        <td style="padding: 10px; border: 1px solid #d1d5db;">${activityStr}</td>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${startTime12}</td>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${endTime12}</td>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${durationStr}</td>
@@ -535,11 +469,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalDecimalHours = Number((totalMinutes / 60).toFixed(2)) + ' hours';
 
             textContent += `----------------------------------------------------------\n`;
-            textContent += `Total weekly hours:\t\t\t\t${totalDecimalHours}\n`;
+            textContent += `Total weekly hours:\t\t\t${totalDecimalHours}\n`;
 
             htmlContent += `
                             <tr style="background-color: #e5e7eb; font-weight: bold;">
-                                <td colspan="4" style="padding: 10px; border: 1px solid #d1d5db; text-align: right;">Total weekly hours:</td>
+                                <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; text-align: right;">Total weekly hours:</td>
                                 <td style="padding: 10px; border: 1px solid #d1d5db;">${totalDecimalHours}</td>
                             </tr>
                         </tbody>
