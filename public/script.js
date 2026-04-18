@@ -426,7 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let textContent = `Hello, This is my TimeSheet :\n\n`;
             textContent += `Hours Report: ${dateRange}\n\n`;
-            textContent += `Date\tStart\tEnd\tDuration\n`;
+            textContent += `Date\tStart\tEnd\tDescription\tDuration\n`;
             textContent += `----------------------------------------------------------\n`;
 
             let htmlContent = `
@@ -439,6 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">Date</th>
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">Start</th>
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">End</th>
+                                <th style="padding: 10px; border: 1px solid #d1d5db;">Description</th>
                                 <th style="padding: 10px; border: 1px solid #d1d5db;">Duration</th>
                             </tr>
                         </thead>
@@ -453,14 +454,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dateStr = entryDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
                 const startTime12 = formatTimeAMPM(entry.startTime);
                 const endTime12 = formatTimeAMPM(entry.endTime);
+                const descStr = entry.description || '';
 
-                textContent += `${dateStr}\t${startTime12}\t${endTime12}\t${durationStr}\n`;
+                textContent += `${dateStr}\t${startTime12}\t${endTime12}\t${descStr}\t${durationStr}\n`;
 
                 htmlContent += `
                     <tr>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${dateStr}</td>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${startTime12}</td>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${endTime12}</td>
+                        <td style="padding: 10px; border: 1px solid #d1d5db;">${escapeHtml(descStr)}</td>
                         <td style="padding: 10px; border: 1px solid #d1d5db;">${durationStr}</td>
                     </tr>
                 `;
@@ -469,11 +472,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalDecimalHours = Number((totalMinutes / 60).toFixed(2)) + ' hours';
 
             textContent += `----------------------------------------------------------\n`;
-            textContent += `Total weekly hours:\t\t\t${totalDecimalHours}\n`;
+            textContent += `Total weekly hours:\t\t\t\t${totalDecimalHours}\n`;
 
             htmlContent += `
                             <tr style="background-color: #e5e7eb; font-weight: bold;">
-                                <td colspan="3" style="padding: 10px; border: 1px solid #d1d5db; text-align: right;">Total weekly hours:</td>
+                                <td colspan="4" style="padding: 10px; border: 1px solid #d1d5db; text-align: right;">Total weekly hours:</td>
                                 <td style="padding: 10px; border: 1px solid #d1d5db;">${totalDecimalHours}</td>
                             </tr>
                         </tbody>
