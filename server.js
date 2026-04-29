@@ -41,7 +41,7 @@ app.get('/api/hours', requireAuth, async (req, res) => {
 // POST new entry
 app.post('/api/hours', requireAuth, async (req, res) => {
     try {
-        const { date, startTime, endTime, description } = req.body;
+        const { date, startTime, endTime, description, recordType } = req.body;
 
         if (!date || !startTime || !endTime) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -53,7 +53,8 @@ app.post('/api/hours', requireAuth, async (req, res) => {
             date,
             startTime,
             endTime,
-            description: description || ''
+            description: description || '',
+            recordType: recordType || 'work'
         });
 
         await newEntry.save();
@@ -68,7 +69,7 @@ app.post('/api/hours', requireAuth, async (req, res) => {
 app.put('/api/hours/:id', requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
-        const { date, startTime, endTime, description } = req.body;
+        const { date, startTime, endTime, description, recordType } = req.body;
 
         if (!date || !startTime || !endTime) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -76,7 +77,7 @@ app.put('/api/hours/:id', requireAuth, async (req, res) => {
 
         const updated = await Hour.findOneAndUpdate(
             { id, userId: req.userId },
-            { date, startTime, endTime, description: description || '' },
+            { date, startTime, endTime, description: description || '', recordType: recordType || 'work' },
             { new: true }
         );
 

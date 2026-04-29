@@ -8,6 +8,78 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let editingId = null;
     let allEntries = [];
+    let currentTab = 'work';
+
+    const tabWork = document.getElementById('tab-work');
+    const tabPracticum = document.getElementById('tab-practicum');
+
+    if (tabWork && tabPracticum) {
+        tabWork.addEventListener('click', () => {
+            currentTab = 'work';
+            tabWork.classList.add('active');
+            tabWork.style.background = 'var(--primary-color)';
+            tabWork.style.color = 'white';
+            tabPracticum.classList.remove('active');
+            tabPracticum.style.background = 'transparent';
+            tabPracticum.style.color = 'var(--text-muted)';
+            renderEntries(allEntries);
+            updateDashboard(allEntries);
+        });
+
+        tabPracticum.addEventListener('click', () => {
+            currentTab = 'practicum';
+            tabPracticum.classList.add('active');
+            tabPracticum.style.background = 'var(--primary-color)';
+            tabPracticum.style.color = 'white';
+            tabWork.classList.remove('active');
+            tabWork.style.background = 'transparent';
+            tabWork.style.color = 'var(--text-muted)';
+            renderEntries(allEntries);
+            updateDashboard(allEntries);
+        });
+    }
+
+    const radioWork = document.querySelector('input[value="work"]');
+    const radioPracticum = document.querySelector('input[value="practicum"]');
+    const cardWork = document.getElementById('card-work');
+    const cardPracticum = document.getElementById('card-practicum');
+
+    if (radioWork && radioPracticum) {
+        document.querySelectorAll('input[name="recordType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'work') {
+                    cardWork.style.borderColor = 'var(--primary-color)';
+                    cardPracticum.style.borderColor = 'transparent';
+                } else {
+                    cardPracticum.style.borderColor = 'var(--primary-color)';
+                    cardWork.style.borderColor = 'transparent';
+                }
+            });
+        });
+    }
+
+    const dayOffToggle = document.getElementById('day-off-toggle');
+    const startTimeInput = document.getElementById('start-time');
+    const endTimeInput = document.getElementById('end-time');
+    const descInput = document.getElementById('description');
+
+    if (dayOffToggle) {
+        dayOffToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                startTimeInput.value = '00:00';
+                endTimeInput.value = '00:00';
+                descInput.value = 'Day Off';
+                startTimeInput.disabled = true;
+                endTimeInput.disabled = true;
+            } else {
+                startTimeInput.value = '';
+                endTimeInput.value = '';
+                descInput.value = 'CornerStone';
+                startTimeInput.disabled = false;
+                endTimeInput.disabled = false;
+            }
+        });
+    }
 
     // Check for token before anything else
     const token = localStorage.getItem('token');
@@ -97,18 +169,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const startTime = document.getElementById('start-time').value;
         const endTime = document.getElementById('end-time').value;
         const description = document.getElementById('description').value;
+        const recordType = document.querySelector('input[name="recordType"]:checked').value;
+
+        const isDayOff = document.getElementById('day-off-toggle') ? document.getElementById('day-off-toggle').checked : false;
 
         if (!date || !startTime || !endTime) {
             showError('Por favor completa todos los campos requeridos');
             return;
         }
 
-        if (startTime >= endTime) {
+        if (!isDayOff && startTime >= endTime) {
             showError('La hora de fin debe ser posterior a la de inicio');
             return;
         }
 
-        const entryData = { date, startTime, endTime, description };
+        const entryData = { date, startTime, endTime, description, recordType };
 
         try {
             let response;
@@ -159,7 +234,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderEntries(entries) {
         entriesList.innerHTML = '';
 
-        if (entries.length === 0) {
+        const filteredEntries = entries.filter(e => (e.recordType || 'work') === currentTab);
+
+        if (filteredEntries.length === 0) {
             entriesList.innerHTML = `
                 <div class="empty-state">
                     <i class="fa-regular fa-calendar-xmark"></i>
@@ -169,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Sort entries by date desc, then by start time desc
-        entries.sort((a, b) => {
+        filteredEntries.sort((a, b) => {
             const dateA = new Date(`${a.date}T${a.startTime}`);
             const dateB = new Date(`${b.date}T${b.startTime}`);
             return dateB - dateA;
@@ -177,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const weeks = {};
 
-        entries.forEach(entry => {
+        filteredEntries.forEach(entry => {
             const date = new Date(entry.date + 'T00:00:00');
             const weekStart = getStartOfWeek(date);
             const weekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
@@ -220,7 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <div class="day-actions">
                             <span class="duration-pill">${formatDuration(duration)}</span>
-                            <button class="btn-edit-mini" onclick="editEntry('${entry.id}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${escapeHtml(entry.description || '')}')" title="Editar">
+                            <button class="btn-edit-mini" onclick="editEntry('${entry.id}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${escapeHtml(entry.description || '')}', '${entry.recordType || 'work'}')" title="Editar">
                                 <i class="fa-solid fa-pen"></i>
                             </button>
                             <button class="btn-delete-mini" onclick="deleteEntry('${entry.id}')" title="Eliminar">
@@ -281,12 +358,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    window.editEntry = (id, date, start, end, desc) => {
+    window.editEntry = (id, date, start, end, desc, recordType) => {
         editingId = id;
         document.getElementById('date').value = date;
         document.getElementById('start-time').value = start;
         document.getElementById('end-time').value = end;
         document.getElementById('description').value = desc;
+
+        const type = recordType || 'work';
+        const radio = document.querySelector(`input[name="recordType"][value="${type}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change'));
+        }
+
+        const toggle = document.getElementById('day-off-toggle');
+        if (toggle) {
+            if (desc === 'Day Off' && start === '00:00' && end === '00:00') {
+                toggle.checked = true;
+                document.getElementById('start-time').disabled = true;
+                document.getElementById('end-time').disabled = true;
+            } else {
+                toggle.checked = false;
+                document.getElementById('start-time').disabled = false;
+                document.getElementById('end-time').disabled = false;
+            }
+        }
 
         submitBtn.innerHTML = '<i class="fa-solid fa-save"></i> Update';
         submitBtn.classList.add('btn-update');
@@ -310,6 +407,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const d = new Date();
         document.getElementById('date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         document.getElementById('description').value = 'CornerStone';
+        
+        const radio = document.querySelector(`input[name="recordType"][value="${currentTab}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change'));
+        }
+        
+        const toggle = document.getElementById('day-off-toggle');
+        if (toggle) {
+            toggle.checked = false;
+            document.getElementById('start-time').disabled = false;
+            document.getElementById('end-time').disabled = false;
+        }
+
         editingId = null;
         submitBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Add';
         submitBtn.classList.remove('btn-update');
@@ -339,7 +450,9 @@ document.addEventListener('DOMContentLoaded', () => {
         endOfWeek.setDate(endOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59, 999);
 
-        entries.forEach(entry => {
+        const filteredEntries = entries.filter(e => (e.recordType || 'work') === currentTab);
+
+        filteredEntries.forEach(entry => {
             const duration = calculateDuration(entry.startTime, entry.endTime);
 
             // Daily total
@@ -396,11 +509,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.copyWeekToClipboard = async (weekKey) => {
         try {
-            const sortedEntries = [...allEntries].sort((a, b) => {
-                const dateA = new Date(`${a.date}T${a.startTime}`);
-                const dateB = new Date(`${b.date}T${b.startTime}`);
-                return dateA - dateB;
-            });
+            const sortedEntries = [...allEntries]
+                .filter(e => (e.recordType || 'work') === currentTab)
+                .sort((a, b) => {
+                    const dateA = new Date(`${a.date}T${a.startTime}`);
+                    const dateB = new Date(`${b.date}T${b.startTime}`);
+                    return dateA - dateB;
+                });
 
             let weekEntries = [];
             let totalMinutes = 0;

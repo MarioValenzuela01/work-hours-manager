@@ -6,7 +6,8 @@ const hourSchema = new mongoose.Schema({
     date: { type: String, required: true },
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
-    description: { type: String, default: '' }
+    description: { type: String, default: '' },
+    recordType: { type: String, enum: ['work', 'practicum'], default: 'work' }
 });
 
 module.exports = mongoose.model('Hour', hourSchema);
