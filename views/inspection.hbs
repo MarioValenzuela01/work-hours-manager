@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        #form-wrapper {
+            width: 100%;
+            overflow: auto;
+        }
+
+        #form-container {
+            position: relative;
+            width: 800px;
+            transform-origin: top left;
+        }
+
+        #form-container img {
+            width: 100%;
+        }
+
+        .field {
+            position: absolute;
+            border: none;
+            border-bottom: 1px solid black;
+            background: transparent;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="form-wrapper">
+        <div id="form-container">
+
+            <img src="/img/form.png">
+
+            <!-- Operator -->
+            <input id="operator" class="field" style="top: 140px; left: 120px; width: 200px;">
+
+            <!-- Date -->
+            <input id="date" class="field" style="top: 140px; left: 500px; width: 120px;">
+
+        </div>
+    </div>
+
+    <button onclick="generatePDF()">Generate PDF</button>
+
+    <script>
+        function scaleForm() {
+            const container = document.getElementById('form-container');
+            const wrapper = document.getElementById('form-wrapper');
+
+            const scale = wrapper.clientWidth / 800;
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener('load', scaleForm);
+        window.addEventListener('resize', scaleForm);
+
+        function generatePDF() {
+            const data = {
+                operator: document.getElementById('operator').value,
+                date: document.getElementById('date').value
+            };
+
+            fetch('/inspection/pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(res => res.blob())
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    window.open(url);
+                });
+        }
+    </script>
+
+</body>
+
+</html>
