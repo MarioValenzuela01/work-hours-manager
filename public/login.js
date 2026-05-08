@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (role === 'admin') {
             window.location.href = 'admin.html';
         } else {
-            window.location.href = 'index.html';
+            window.location.href = 'menu.html';
         }
     }
 
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (data.role === 'admin') {
                         window.location.href = 'admin.html';
                     } else {
-                        window.location.href = 'index.html';
+                        window.location.href = 'menu.html';
                     }
                 } else {
                     // Registration successful, auto-login or switch to login
