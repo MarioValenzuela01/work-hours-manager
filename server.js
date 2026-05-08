@@ -7,6 +7,7 @@ const Hour = require('./models/hours.model'); // ✅ importa el modelo
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const { requireAuth } = require('./middleware/auth.middleware');
+const inspectionRoutes = require('./inspection/inspection.routes');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/inspection', inspectionRoutes);
 
 // Connect Mongo
 mongoose.connect(MONGO_URI)
