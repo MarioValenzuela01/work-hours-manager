@@ -1,0 +1,279 @@
+<!-- summary.html -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📅 Hours Summary</title>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body {
+            background: #f4f6f9;
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 20px;
+        }
+
+        .summary-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .title-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .title-area i {
+            font-size: 30px;
+            color: #0d6efd;
+        }
+
+        .filters {
+            background: #eef3ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+
+        .table thead {
+            background: #0d6efd;
+            color: white;
+        }
+
+        .hours-badge {
+            background: #198754;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .btn-menu {
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 0;
+            }
+
+            .summary-card {
+                padding: 15px;
+                border-radius: 10px;
+            }
+
+            .title-area {
+                align-items: flex-start;
+            }
+
+            .title-area i {
+                font-size: 26px;
+            }
+
+            .title-area h2 {
+                font-size: 22px;
+            }
+
+            .filters {
+                padding: 12px;
+            }
+
+            .filters .col-md-3 {
+                width: 100%;
+            }
+
+            .filters label {
+                font-weight: bold;
+                margin-bottom: 6px;
+            }
+
+            .filters select,
+            .filters input,
+            .filters button {
+                width: 100%;
+                min-height: 44px;
+                font-size: 16px;
+            }
+
+            .table-responsive {
+                overflow-x: auto;
+            }
+
+            table {
+                min-width: 520px;
+                font-size: 14px;
+            }
+
+            .hours-badge {
+                display: inline-block;
+                white-space: nowrap;
+            }
+
+            .modal-dialog {
+                margin: 10px;
+            }
+
+            .modal-body {
+                overflow-x: auto;
+            }
+
+            .modal-body table {
+                min-width: 650px;
+                font-size: 14px;
+            }
+
+            .btn-menu {
+                width: 100%;
+                min-height: 44px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <div class="summary-card">
+
+            <div class="title-area">
+                <i class="fa-solid fa-business-time"></i>
+                <div>
+                    <h2 class="mb-0">Hours Summary</h2>
+                    <small>View generated employee hours</small>
+                </div>
+            </div>
+
+            <!-- FILTERS -->
+            <div class="filters">
+
+                <div class="row g-3">
+
+                    <div class="col-md-3">
+                        <label class="form-label">
+                            <input type="checkbox" id="filterWeek">
+                            Filter by Week Range
+                        </label>
+
+                        <select id="weekRangeSelect" class="form-select">
+                            <option value="">All Weeks</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">
+                            <input type="checkbox" id="filterMonth">
+                            Filter by Month
+                        </label>
+
+                        <select id="monthSelect" class="form-select">
+                            <option value="">All Months</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">
+                            <input type="checkbox" id="filterHours">
+                            Minimum Hours
+                        </label>
+
+                        <input type="number" id="minHours" class="form-control" placeholder="Example: 40">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label">
+                            <input type="checkbox" id="filterEmployee">
+                            Employee
+                        </label>
+
+                        <input type="text" id="employeeSearch" class="form-control" placeholder="Search employee">
+                    </div>
+
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button class="btn btn-primary w-100" id="applyFilters">
+                            <i class="fa-solid fa-filter"></i>
+                            Apply Filters
+                        </button>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- TABLE -->
+            <div class="table-responsive">
+
+                <table class="table table-bordered table-hover align-middle">
+
+                    <thead>
+                        <tr>
+                            <th>Week Range</th>
+                            <th>Entries</th>
+                            <th>Total Hours</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="summaryTable"></tbody>
+
+                </table>
+
+            </div>
+
+            <a href="/menu.html" class="btn btn-secondary btn-menu">
+                <i class="fa-solid fa-arrow-left"></i>
+                Back to Menu
+            </a>
+
+        </div>
+
+    </div>
+    <!-- WEEK DETAILS MODAL -->
+    <div class="modal fade" id="weekDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title" id="weekDetailsTitle">Week Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <table class="table table-bordered table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Hours</th>
+                                <th>Type</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="weekDetailsTable"></tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="summary.js"></script>
+
+</body>
+
+</html>

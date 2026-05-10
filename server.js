@@ -40,6 +40,44 @@ app.get('/api/hours', requireAuth, async (req, res) => {
     }
 });
 
+// GET hours summary
+app.get('/api/hours/summary', requireAuth, async (req, res) => {
+    try {
+        const hours = await Hour.find({ userId: req.userId })
+            .sort({ date: -1, startTime: -1 });
+
+        const summary = hours.map(item => {
+            const start = new Date(`2000-01-01T${item.startTime}`);
+            const end = new Date(`2000-01-01T${item.endTime}`);
+
+            const totalHours = (end - start) / (1000 * 60 * 60);
+
+            return {
+                employee: 'Me',
+                date: item.date,
+                week: getWeekLabel(item.date),
+                totalHours: totalHours,
+                recordType: item.recordType,
+                description: item.description
+            };
+        });
+
+        res.json(summary);
+
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load summary' });
+    }
+});
+
+function getWeekLabel(dateString) {
+    const date = new Date(dateString);
+    const firstDay = new Date(date.getFullYear(), 0, 1);
+    const days = Math.floor((date - firstDay) / (24 * 60 * 60 * 1000));
+    const weekNumber = Math.ceil((days + firstDay.getDay() + 1) / 7);
+
+    return `Week ${weekNumber}`;
+}
+
 // POST new entry
 app.post('/api/hours', requireAuth, async (req, res) => {
     try {
