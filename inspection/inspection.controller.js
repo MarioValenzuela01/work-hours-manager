@@ -137,11 +137,10 @@ exports.generatePDF = async (req, res) => {
         if (data.comments && data.comments.trim() !== '') {
             page.drawText(data.comments.trim(), {
                 x: 87,
-                y: 202,
-                size: 12,
-                font,
+                y: 190,
+                size: 11,
                 maxWidth: 450,
-                lineHeight: 14
+                lineHeight: 10
             });
         }
 
