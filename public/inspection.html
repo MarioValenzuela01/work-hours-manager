@@ -63,6 +63,7 @@
             padding: 22px;
             margin-bottom: 20px;
             box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+            overflow-x: auto;
         }
 
         h2 {
@@ -138,25 +139,79 @@
             font-size: 14px;
         }
 
+        /* =========================
+       FLUIDS TABLE
+       ========================= */
+
         .fluid-table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
         }
 
         .fluid-table th,
         .fluid-table td {
             border: 1px solid var(--border);
-            padding: 8px;
+            padding: 7px;
+            vertical-align: middle;
             text-align: left;
         }
 
         .fluid-table th {
             color: var(--muted);
             background: rgba(15, 23, 42, 0.6);
+            font-size: 14px;
         }
 
-        .fluid-table input {
-            padding: 8px;
+        /* ✅ Column */
+        .fluid-table th:nth-child(1),
+        .fluid-table td:nth-child(1) {
+            width: 46px;
+            text-align: center;
+        }
+
+        /* Fluid name */
+        .fluid-table th:nth-child(2),
+        .fluid-table td:nth-child(2) {
+            width: 145px;
+        }
+
+        /* Level / Amount */
+        .fluid-table th:nth-child(3),
+        .fluid-table td:nth-child(3) {
+            width: 95px;
+            text-align: center;
+        }
+
+        /* Added */
+        .fluid-table th:nth-child(4),
+        .fluid-table td:nth-child(4) {
+            width: 80px;
+            text-align: center;
+        }
+
+        /* Comments */
+        .fluid-table th:nth-child(5),
+        .fluid-table td:nth-child(5) {
+            width: 105px;
+            text-align: center;
+        }
+
+        .fluid-table td:nth-child(3) input,
+        .fluid-table td:nth-child(4) input {
+            width: 70px;
+            max-width: 70px;
+            height: 34px;
+            padding: 4px 6px;
+            font-size: 14px;
+            text-align: center;
+            border-radius: 8px;
+        }
+
+        .fluid-table input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--success);
         }
 
         .actions {
@@ -202,23 +257,222 @@
             margin-top: 8px;
         }
 
-        @media (max-width: 760px) {
-            body {
-                padding: 14px;
-            }
+        /* =========================
+       COMMENT BUTTON
+       ========================= */
 
-            .top-bar,
-            .actions {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            .grid-2,
-            .grid-3,
-            .check-grid {
-                grid-template-columns: 1fr;
-            }
+        .comment-btn {
+            background: rgba(15, 23, 42, 0.85);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 7px 8px;
+            cursor: pointer;
+            width: 88px;
+            min-width: 88px;
+            font-size: 12px;
+            white-space: nowrap;
         }
+
+        .comment-btn.has-note {
+            background: rgba(34, 197, 94, 0.15);
+            border-color: rgba(34, 197, 94, 0.5);
+            color: #86efac;
+        }
+
+        /* =========================
+       MODAL
+       ========================= */
+
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            width: 100%;
+            max-width: 500px;
+            background: #1e293b;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+        }
+
+        #modalCommentText {
+            width: 100%;
+            min-height: 140px;
+            resize: vertical;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.85);
+            color: white;
+            font-size: 15px;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+    /* =========================
+   MOBILE
+   ========================= */
+
+/* =========================
+   MOBILE
+   ========================= */
+
+@media (max-width: 760px) {
+    body {
+        padding: 10px;
+    }
+
+    .top-bar,
+    .actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .grid-2,
+    .grid-3,
+    .check-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card {
+        padding: 14px;
+        overflow-x: hidden;
+    }
+
+    .fluid-table {
+        width: 100%;
+        min-width: 0;
+        table-layout: fixed;
+        font-size: 12px;
+    }
+
+    .fluid-table th,
+    .fluid-table td {
+        padding: 5px;
+        white-space: normal;
+        word-break: normal;
+        vertical-align: middle;
+    }
+
+    /* ✅ column */
+    .fluid-table th:nth-child(1),
+    .fluid-table td:nth-child(1) {
+        width: 34px;
+        text-align: center;
+    }
+
+    /* Fluid name */
+    .fluid-table th:nth-child(2),
+    .fluid-table td:nth-child(2) {
+        width: 31%;
+    }
+
+    /* Level / Amount */
+    .fluid-table th:nth-child(3),
+    .fluid-table td:nth-child(3) {
+        width: 24%;
+        text-align: center;
+    }
+
+    /* Added */
+    .fluid-table th:nth-child(4),
+    .fluid-table td:nth-child(4) {
+        width: 17%;
+        text-align: center;
+    }
+
+    /* Comments */
+    .fluid-table th:nth-child(5),
+    .fluid-table td:nth-child(5) {
+        width: 20%;
+        text-align: center;
+    }
+
+    .fluid-table input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        padding: 0;
+    }
+
+    .fluid-table td:nth-child(3) input,
+    .fluid-table td:nth-child(4) input {
+        width: 44px;
+        max-width: 44px;
+        min-width: 44px;
+        height: 30px;
+        font-size: 12px;
+        padding: 2px 4px;
+        text-align: center;
+        border-radius: 7px;
+    }
+
+    .comment-btn {
+        width: 52px;
+        min-width: 52px;
+        max-width: 52px;
+        height: 30px;
+        font-size: 0;
+        padding: 4px;
+        border-radius: 7px;
+    }
+
+    .comment-btn::after {
+        content: "Note";
+        font-size: 11px;
+    }
+
+    .comment-btn.has-note::after {
+        content: "✓ Note";
+        font-size: 10px;
+    }
+
+    .modal-content {
+        max-width: 100%;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+    }
+}
     </style>
 </head>
 
@@ -413,77 +667,148 @@
             <section class="card">
                 <h2>Fluids</h2>
 
-                <p class="note">
-                    Marca el fluido si fue revisado. Los campos de la derecha se imprimen en las columnas del formulario oficial.
-                </p>
-
                 <table class="fluid-table">
                     <thead>
                         <tr>
-                            <th>Checked</th>
+                            <th style="text-align: center;">✅</th>
                             <th>Fluid</th>
                             <th>Level / Amount</th>
                             <th>Added</th>
-                            <th>Comments</th>
+                            <th>Notes</th>
                         </tr>
                     </thead>
 
                     <tbody>
                         <tr>
-                            <td><input type="checkbox" id="field26"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field26">
+                            </td>
                             <td>Engine Oil</td>
                             <td><input id="field33"></td>
                             <td><input id="field40"></td>
-                            <td><input id="field47"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field47"
+                                    onclick="openCommentModal('Engine Oil', 'field47')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field47">
+                            </td>
                         </tr>
 
                         <tr>
-                            <td><input type="checkbox" id="field27"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field27">
+                            </td>
                             <td>Hydraulic Oil</td>
                             <td><input id="field34"></td>
                             <td><input id="field41"></td>
-                            <td><input id="field48"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field48"
+                                    onclick="openCommentModal('Hydraulic Oil', 'field48')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field48">
+                            </td>
                         </tr>
 
                         <tr>
-                            <td><input type="checkbox" id="field28"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field28">
+                            </td>
                             <td>Transmission Oil</td>
                             <td><input id="field35"></td>
                             <td><input id="field42"></td>
-                            <td><input id="field49"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field49"
+                                    onclick="openCommentModal('Transmission Oil', 'field49')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field49">
+                            </td>
                         </tr>
 
                         <tr>
-                            <td><input type="checkbox" id="field29"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field29">
+                            </td>
                             <td>Engine Coolant</td>
                             <td><input id="field36"></td>
                             <td><input id="field43"></td>
-                            <td><input id="field50"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field50"
+                                    onclick="openCommentModal('Engine Coolant', 'field50')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field50">
+                            </td>
                         </tr>
 
                         <tr>
-                            <td><input type="checkbox" id="field30"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field30">
+                            </td>
                             <td>Washer Fluid</td>
                             <td><input id="field37"></td>
                             <td><input id="field44"></td>
-                            <td><input id="field51"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field51"
+                                    onclick="openCommentModal('Washer Fluid', 'field51')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field51">
+                            </td>
                         </tr>
 
                         <tr>
-                            <td><input type="checkbox" id="field31"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field31">
+                            </td>
                             <td>Fuel</td>
                             <td><input id="field38"></td>
                             <td><input id="field45"></td>
-                            <td><input id="field52"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field52"
+                                    onclick="openCommentModal('Fuel', 'field52')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field52">
+                            </td>
                         </tr>
 
                         <tr>
-                            <td><input type="checkbox" id="field32"></td>
+                            <td style="text-align: center;">
+                                <input type="checkbox" id="field32">
+                            </td>
                             <td>DEF</td>
                             <td><input id="field39"></td>
                             <td><input id="field46"></td>
-                            <td><input id="field53"></td>
+                            <td>
+                                <button type="button" class="comment-btn" id="btn-field53"
+                                    onclick="openCommentModal('DEF', 'field53')">
+                                    Add note
+                                </button>
+                                <input type="hidden" id="field53">
+                            </td>
                         </tr>
+
+                        <div id="commentModal" class="modal">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h3 id="modalTitle">Fluid Comment</h3>
+                                    <button type="button" class="close-btn" onclick="closeCommentModal()">×</button>
+                                </div>
+
+                                <textarea id="modalCommentText" placeholder="Write the comment here..."></textarea>
+                                <input type="hidden" id="currentCommentField">
+
+                                <div class="modal-actions">
+                                    <button type="button" class="btn-secondary"
+                                        onclick="closeCommentModal()">Cancel</button>
+                                    <button type="button" class="btn-primary" onclick="saveCommentModal()">Save
+                                        Note</button>
+                                </div>
+                            </div>
+                        </div>
                     </tbody>
                 </table>
             </section>
@@ -601,6 +926,44 @@
             const today = new Date();
             document.getElementById('date').value =
                 `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
+
+        function openCommentModal(fluidName, fieldId) {
+            const hiddenInput = document.getElementById(fieldId);
+            const modal = document.getElementById("commentModal");
+            const title = document.getElementById("modalTitle");
+            const textarea = document.getElementById("modalCommentText");
+            const currentField = document.getElementById("currentCommentField");
+
+            title.textContent = `${fluidName} - Comment`;
+            textarea.value = hiddenInput.value || "";
+            currentField.value = fieldId;
+
+            modal.classList.add("show");
+        }
+
+        function closeCommentModal() {
+            document.getElementById("commentModal").classList.remove("show");
+        }
+
+        function saveCommentModal() {
+            const fieldId = document.getElementById("currentCommentField").value;
+            const text = document.getElementById("modalCommentText").value.trim();
+
+            const hiddenInput = document.getElementById(fieldId);
+            const button = document.getElementById(`btn-${fieldId}`);
+
+            hiddenInput.value = text;
+
+            if (text) {
+                button.textContent = "✅ Note added";
+                button.classList.add("has-note");
+            } else {
+                button.textContent = "Add note";
+                button.classList.remove("has-note");
+            }
+
+            closeCommentModal();
         }
     </script>
 
