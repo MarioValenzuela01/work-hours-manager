@@ -1,0 +1,5216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Work Hours Manager Code</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 30px;
+}
+h1 {
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+}
+h2 {
+    margin-top: 35px;
+    background: #eeeeee;
+    padding: 10px;
+    border-left: 5px solid #333;
+    page-break-before: always;
+}
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    background: #f8f8f8;
+    padding: 15px;
+    border: 1px solid #ddd;
+}
+</style>
+</head>
+<body>
+<h1>Work Hours Manager - Project Code</h1>
+<h2>./app.js</h2>
+<pre>console.log('Starting app.js...');
+
+const express = require('express');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+const path = require('path');
+const cors = require('cors');
+
+const authRoutes = require('./routes/auth.routes');
+const workHoursRoutes = require('./routes/workHours.routes');
+const adminRoutes = require('./routes/admin.routes');
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (req, res) =&gt; res.status(200).send('OK'));
+
+app.use('/api/auth', authRoutes);
+app.use('/api/hours', workHoursRoutes);
+app.use('/api/admin', adminRoutes);
+
+app.get('/api/test', (req, res) =&gt; {
+  res.json({ message: 'API running 🚀' });
+});
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() =&gt; console.log('MongoDB Connected'))
+  .catch(err =&gt; console.log('Mongo error:', err.message));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =&gt; console.log(`Server running on port ${PORT}`));</pre>
+<h2>./controllers/admin.controller.js</h2>
+<pre>const User = require('../models/user.model');
+const Hour = require('../models/hours.model');
+const bcrypt = require('bcryptjs');
+
+const getAllUsers = async (req, res) =&gt; {
+    try {
+        const users = await User.find({}, '-passwordHash').sort({ username: 1 });
+        return res.status(200).json({ ok: true, users });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        return res.status(500).json({ ok: false, message: 'Server error fetching users' });
+    }
+};
+
+const resetUserPassword = async (req, res) =&gt; {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+        return res.status(400).json({ ok: false, message: 'User ID and new password are required' });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ ok: false, message: 'User not found' });
+        }
+
+        user.passwordHash = bcrypt.hashSync(newPassword, 10);
+        await user.save();
+
+        return res.status(200).json({ ok: true, message: 'Password reset successfully' });
+    } catch (error) {
+        console.error('Error resetting password:', error);
+        return res.status(500).json({ ok: false, message: 'Server error resetting password' });
+    }
+};
+
+const deleteUser = async (req, res) =&gt; {
+    const { userId } = req.params;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ ok: false, message: 'User not found' });
+        }
+
+        // Optionally prevent deleting self if req.userId === userId
+        if (req.userId === userId) {
+            return res.status(400).json({ ok: false, message: 'Cannot delete your own admin account' });
+        }
+
+        // Delete user
+        await User.findByIdAndDelete(userId);
+        // Delete their associated hours
+        await Hour.deleteMany({ userId });
+
+        return res.status(200).json({ ok: true, message: 'User and their hours deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        return res.status(500).json({ ok: false, message: 'Server error deleting user' });
+    }
+};
+
+const getAllHours = async (req, res) =&gt; {
+    try {
+        // We fetch all hours and ideally populate user info if there was a proper ref.
+        // Since hours.model probably stores userId as a String, we might need to manually group or just fetch all.
+        // Let's fetch all hours. We'll sort by date descending.
+        const hours = await Hour.find({}).sort({ date: -1, startTime: -1 });
+
+        // To make it easy for frontend, we can get all users and map them
+        const users = await User.find({}, 'username');
+        const userMap = {};
+        users.forEach(u =&gt; {
+            userMap[u._id.toString()] = u.username;
+        });
+
+        // Attach username to each hour
+        const hoursWithUsernames = hours.map(h =&gt; ({
+            ...h.toObject(),
+            username: userMap[h.userId] || 'Unknown User'
+        }));
+
+        return res.status(200).json({ ok: true, hours: hoursWithUsernames });
+    } catch (error) {
+        console.error('Error fetching all hours:', error);
+        return res.status(500).json({ ok: false, message: 'Server error fetching all hours' });
+    }
+};
+
+const getUserHours = async (req, res) =&gt; {
+    const { userId } = req.params;
+    try {
+        const hours = await Hour.find({ userId }).sort({ date: -1, startTime: -1 });
+        return res.status(200).json({ ok: true, hours });
+    } catch (error) {
+        console.error('Error fetching user hours:', error);
+        return res.status(500).json({ ok: false, message: 'Server error fetching user hours' });
+    }
+};
+
+module.exports = { getAllUsers, resetUserPassword, deleteUser, getAllHours, getUserHours };
+</pre>
+<h2>./controllers/auth.controller.js</h2>
+<pre>const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');   // 👈 AGREGAR ESTA LINEA
+const User = require('../models/user.model');
+
+const register = async (req, res) =&gt; {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, message: 'username and password required' });
+  }
+
+  const existing = await User.findOne({ username });
+  if (existing) {
+    return res.status(400).json({ ok: false, message: 'Username already exists' });
+  }
+
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  await User.create({ username, passwordHash });
+  return res.status(201).json({ ok: true, message: 'User created' });
+};
+
+const login = async (req, res) =&gt; {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, message: 'username and password required' });
+  }
+
+  const user = await User.findOne({ username });
+  if (!user) {
+    return res.status(401).json({ ok: false, message: 'Invalid login' });
+  }
+
+  const match = bcrypt.compareSync(password, user.passwordHash);
+  if (!match) {
+    return res.status(401).json({ ok: false, message: 'Invalid login' });
+  }
+
+  // ✅ Crear JWT
+  const token = jwt.sign(
+    { userId: user._id.toString(), role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '2h' }
+  );
+
+  return res.status(200).json({
+    ok: true,
+    message: 'Login OK',
+    token,
+    role: user.role
+  });
+};
+
+const changePassword = async (req, res) =&gt; {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.userId;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ ok: false, message: 'Old and new password required' });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ ok: false, message: 'User not found' });
+    }
+
+    const match = bcrypt.compareSync(oldPassword, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ ok: false, message: 'Invalid old password' });
+    }
+
+    user.passwordHash = bcrypt.hashSync(newPassword, 10);
+    await user.save();
+
+    return res.status(200).json({ ok: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    return res.status(500).json({ ok: false, message: 'Server error changing password' });
+  }
+};
+
+module.exports = { register, login, changePassword };</pre>
+<h2>./controllers/workHours.controller.js</h2>
+<pre>const WorkHours = require('../models/workHours.model');
+
+const createHours = async (req, res) =&gt; {
+  const { date, hours, note } = req.body;
+
+  if (!date || hours === undefined) {
+    return res.status(400).json({ ok: false, message: 'date and hours required' });
+  }
+
+  const numHours = Number(hours);
+  if (Number.isNaN(numHours) || numHours &lt; 0) {
+    return res.status(400).json({ ok: false, message: 'hours must be a number &gt;= 0' });
+  }
+
+  const item = await WorkHours.create({
+    userId: req.userId,
+    date: new Date(date),
+    hours: numHours,
+    note: note || ''
+  });
+
+  return res.status(201).json({ ok: true, item });
+};
+
+const getMyHours = async (req, res) =&gt; {
+  const items = await WorkHours.find({ userId: req.userId }).sort({ date: -1 });
+  return res.json({ ok: true, items });
+};
+
+const updateHours = async (req, res) =&gt; {
+  const { id } = req.params;
+  const { date, hours, note } = req.body;
+
+  const doc = await WorkHours.findOne({ _id: id, userId: req.userId });
+  if (!doc) {
+    return res.status(404).json({ ok: false, message: 'Not found' });
+  }
+
+  if (date) doc.date = new Date(date);
+
+  if (hours !== undefined) {
+    const numHours = Number(hours);
+    if (Number.isNaN(numHours) || numHours &lt; 0) {
+      return res.status(400).json({ ok: false, message: 'hours must be a number &gt;= 0' });
+    }
+    doc.hours = numHours;
+  }
+
+  if (note !== undefined) doc.note = note;
+
+  await doc.save();
+  return res.json({ ok: true, item: doc });
+};
+
+const deleteHours = async (req, res) =&gt; {
+  const { id } = req.params;
+
+  const deleted = await WorkHours.findOneAndDelete({ _id: id, userId: req.userId });
+  if (!deleted) {
+    return res.status(404).json({ ok: false, message: 'Not found' });
+  }
+
+  return res.json({ ok: true, message: 'Deleted' });
+};
+
+// ✅ Export al final
+module.exports = { createHours, getMyHours, updateHours, deleteHours };</pre>
+<h2>./data/hours_old.json</h2>
+<pre>[
+  {
+    "id": "1771257900724",
+    "date": "2026-02-16",
+    "startTime": "16:00",
+    "endTime": "19:00",
+    "description": "Cornestone"
+  },
+  {
+    "id": "1771433349840",
+    "date": "2026-02-18",
+    "startTime": "17:00",
+    "endTime": "19:00",
+    "description": "Conrnestone job"
+  }
+]</pre>
+<h2>./inspection/inspection.controller.js</h2>
+<pre>const fs = require('fs');
+const path = require('path');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
+
+const Hour = require('../models/hours.model');
+
+exports.loadSelectHours = (req, res) =&gt; {
+    res.sendFile(path.join(__dirname, '../public/select-hours.html'));
+};
+
+exports.handleSelectHour = async (req, res) =&gt; {
+    const { hourId } = req.body;
+
+    if (!hourId) {
+        return res.status(400).json({ error: 'Missing hourId' });
+    }
+
+    try {
+        const hour = await Hour.findOne({ id: hourId, userId: req.userId });
+
+        if (!hour) {
+            return res.status(404).json({ error: 'Hour not found' });
+        }
+
+        const query =
+            `?date=${encodeURIComponent(hour.date)}` +
+            `&amp;hourStart=${encodeURIComponent(hour.startTime)}` +
+            `&amp;hourEnd=${encodeURIComponent(hour.endTime)}` +
+            `&amp;description=${encodeURIComponent(hour.description || '')}`;
+
+        res.redirect(`/inspection${query}`);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+exports.loadForm = (req, res) =&gt; {
+    res.sendFile(path.join(__dirname, '../public/inspection.html'));
+};
+
+exports.generatePDF = async (req, res) =&gt; {
+    try {
+        console.log("BODY:", req.body);
+
+        const data = req.body;
+
+        const existingPdfBytes = fs.readFileSync(
+            path.join(__dirname, '../templates/inspection-template.pdf')
+        );
+
+        const pdfDoc = await PDFDocument.load(existingPdfBytes);
+        const page = pdfDoc.getPages()[0];
+
+        const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        page.drawText(data.operator || '', { x: 140, y: 627, size: 12, font });
+        page.drawText(data.date || '', { x: 443, y: 627, size: 12, font });
+        page.drawText(data.size || '', { x: 142, y: 607, size: 14, font });
+        page.drawText(data.serialNumber || '', { x: 303, y: 607, size: 12, font });
+        page.drawText(data.hourStart || '', { x: 452, y: 607, size: 12, font });
+        page.drawText(data.hourEnd || '', { x: 452, y: 587, size: 12, font });
+
+        page.drawText("Hour End:", { x: 390, y: 587, size: 12, font });
+
+        const drawX = (value, x, y) =&gt; {
+            if (value &amp;&amp; value.trim() !== '') {
+                page.drawText('X', { x, y, size: 14, font });
+            }
+        };
+
+        drawX(data.field1, 282, 566);
+        drawX(data.field2, 282, 551);
+        drawX(data.field3, 282, 536);
+        drawX(data.field4, 282, 521);
+        drawX(data.field5, 282, 506);
+
+        drawX(data.field6, 282, 467);
+        drawX(data.field7, 282, 452);
+        drawX(data.field8, 282, 437);
+        drawX(data.field9, 282, 422);
+        drawX(data.field10, 282, 407);
+        drawX(data.field11, 282, 392);
+        drawX(data.field12, 282, 377);
+        drawX(data.field13, 282, 362);
+
+        drawX(data.field14, 517, 566);
+        drawX(data.field15, 517, 551);
+        drawX(data.field16, 517, 536);
+        drawX(data.field17, 517, 521);
+
+        drawX(data.field18, 517, 467);
+        drawX(data.field19, 517, 452);
+        drawX(data.field20, 517, 437);
+        drawX(data.field21, 517, 422);
+        drawX(data.field22, 517, 407);
+        drawX(data.field23, 517, 392);
+        drawX(data.field24, 517, 377);
+        drawX(data.field25, 517, 362);
+
+        drawX(data.field26, 196, 328);
+        drawX(data.field27, 196, 311);
+        drawX(data.field28, 196, 296);
+        drawX(data.field29, 196, 279);
+        drawX(data.field30, 196, 264);
+        drawX(data.field31, 196, 249);
+        drawX(data.field32, 196, 234);
+
+        const drawTextField = (value, x, y, width) =&gt; {
+            if (value &amp;&amp; value.trim() !== '') {
+                const size = 10;
+                const textWidth = font.widthOfTextAtSize(value, size);
+                const offsetX = textWidth &lt; width ? (width - textWidth) / 2 : 0;
+
+                page.drawText(value, {
+                    x: x + offsetX,
+                    y,
+                    size,
+                    font
+                });
+            }
+        };
+
+        for (let i = 33; i &lt;= 39; i++) {
+            drawTextField(data[`field${i}`], 219, 328 - ((i - 33) * 16), 99);
+        }
+
+        for (let i = 40; i &lt;= 46; i++) {
+            drawTextField(data[`field${i}`], 325, 328 - ((i - 40) * 16), 82);
+        }
+
+        for (let i = 47; i &lt;= 53; i++) {
+            drawTextField(data[`field${i}`], 414, 328 - ((i - 47) * 16), 116);
+        }
+
+        if (data.comments &amp;&amp; data.comments.trim() !== '') {
+            page.drawText(data.comments.trim(), {
+                x: 87,
+                y: 190,
+                size: 11,
+                maxWidth: 450,
+                lineHeight: 10
+            });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename=inspection.pdf');
+        res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error generating PDF');
+    }
+};</pre>
+<h2>./inspection/inspection.model.js</h2>
+<pre></pre>
+<h2>./inspection/inspection.routes.js</h2>
+<pre>const express = require('express');
+const router = express.Router();
+const controller = require('./inspection.controller');
+
+// Existing inspection routes
+router.get('/', controller.loadForm);
+router.post('/pdf', controller.generatePDF);
+
+// New routes for selecting hours
+router.get('/select-hours', controller.loadSelectHours);
+router.post('/select-hours', controller.handleSelectHour);
+
+module.exports = router;</pre>
+<h2>./middleware/auth.middleware.js</h2>
+<pre>const jwt = require('jsonwebtoken');
+
+const requireAuth = (req, res, next) =&gt; {
+  const header = req.headers.authorization; // "Bearer token"
+  if (!header) return res.status(401).json({ ok: false, message: 'Missing Authorization header' });
+
+  const parts = header.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    return res.status(401).json({ ok: false, message: 'Invalid Authorization format' });
+  }
+
+  const token = parts[1];
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = payload.userId;
+    req.role = payload.role; // Extract role from JWT
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, message: 'Invalid token' });
+  }
+};
+
+const requireAdmin = (req, res, next) =&gt; {
+  if (req.role !== 'admin') {
+    return res.status(403).json({ ok: false, message: 'Forbidden: Admin access required' });
+  }
+  next();
+};
+
+module.exports = { requireAuth, requireAdmin };</pre>
+<h2>./models/hours.model.js</h2>
+<pre>const mongoose = require('mongoose');
+
+const hourSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },   // mantengo tu id string
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    startTime: { type: String, required: true },
+    endTime: { type: String, required: true },
+    description: { type: String, default: '' },
+    recordType: { type: String, enum: ['work', 'practicum'], default: 'work' }
+});
+
+module.exports = mongoose.model('Hour', hourSchema);</pre>
+<h2>./models/user.model.js</h2>
+<pre>const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' }
+}, { timestamps: true });
+
+module.exports = mongoose.model('User', userSchema);</pre>
+<h2>./models/workHours.model.js</h2>
+<pre>const mongoose = require('mongoose');
+
+const workHoursSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User'
+  },
+  date: {
+    type: Date,
+    required: true
+  },
+  hours: {
+    type: Number,
+    required: true
+  },
+  note: {
+    type: String
+  }
+}, { timestamps: true });
+
+module.exports = mongoose.model('WorkHours', workHoursSchema);</pre>
+<h2>./package.json</h2>
+<pre>{
+  "name": "work-hours-manager",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" &amp;&amp; exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.2.3",
+    "pdf-lib": "^1.17.1"
+  }
+}
+</pre>
+<h2>./project-code.html</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+&lt;meta charset="UTF-8"&gt;
+&lt;title&gt;Work Hours Manager Code&lt;/title&gt;
+&lt;style&gt;
+body {
+    font-family: Arial, sans-serif;
+    margin: 30px;
+}
+h1 {
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+}
+h2 {
+    margin-top: 35px;
+    background: #eeeeee;
+    padding: 10px;
+    border-left: 5px solid #333;
+    page-break-before: always;
+}
+pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    background: #f8f8f8;
+    padding: 15px;
+    border: 1px solid #ddd;
+}
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;h1&gt;Work Hours Manager - Project Code&lt;/h1&gt;
+&lt;h2&gt;./app.js&lt;/h2&gt;
+&lt;pre&gt;console.log('Starting app.js...');
+
+const express = require('express');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+const path = require('path');
+const cors = require('cors');
+
+const authRoutes = require('./routes/auth.routes');
+const workHoursRoutes = require('./routes/workHours.routes');
+const adminRoutes = require('./routes/admin.routes');
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (req, res) =&amp;gt; res.status(200).send('OK'));
+
+app.use('/api/auth', authRoutes);
+app.use('/api/hours', workHoursRoutes);
+app.use('/api/admin', adminRoutes);
+
+app.get('/api/test', (req, res) =&amp;gt; {
+  res.json({ message: 'API running 🚀' });
+});
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() =&amp;gt; console.log('MongoDB Connected'))
+  .catch(err =&amp;gt; console.log('Mongo error:', err.message));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =&amp;gt; console.log(`Server running on port ${PORT}`));&lt;/pre&gt;
+&lt;h2&gt;./controllers/admin.controller.js&lt;/h2&gt;
+&lt;pre&gt;const User = require('../models/user.model');
+const Hour = require('../models/hours.model');
+const bcrypt = require('bcryptjs');
+
+const getAllUsers = async (req, res) =&amp;gt; {
+    try {
+        const users = await User.find({}, '-passwordHash').sort({ username: 1 });
+        return res.status(200).json({ ok: true, users });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        return res.status(500).json({ ok: false, message: 'Server error fetching users' });
+    }
+};
+
+const resetUserPassword = async (req, res) =&amp;gt; {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+        return res.status(400).json({ ok: false, message: 'User ID and new password are required' });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ ok: false, message: 'User not found' });
+        }
+
+        user.passwordHash = bcrypt.hashSync(newPassword, 10);
+        await user.save();
+
+        return res.status(200).json({ ok: true, message: 'Password reset successfully' });
+    } catch (error) {
+        console.error('Error resetting password:', error);
+        return res.status(500).json({ ok: false, message: 'Server error resetting password' });
+    }
+};
+
+const deleteUser = async (req, res) =&amp;gt; {
+    const { userId } = req.params;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ ok: false, message: 'User not found' });
+        }
+
+        // Optionally prevent deleting self if req.userId === userId
+        if (req.userId === userId) {
+            return res.status(400).json({ ok: false, message: 'Cannot delete your own admin account' });
+        }
+
+        // Delete user
+        await User.findByIdAndDelete(userId);
+        // Delete their associated hours
+        await Hour.deleteMany({ userId });
+
+        return res.status(200).json({ ok: true, message: 'User and their hours deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        return res.status(500).json({ ok: false, message: 'Server error deleting user' });
+    }
+};
+
+const getAllHours = async (req, res) =&amp;gt; {
+    try {
+        // We fetch all hours and ideally populate user info if there was a proper ref.
+        // Since hours.model probably stores userId as a String, we might need to manually group or just fetch all.
+        // Let's fetch all hours. We'll sort by date descending.
+        const hours = await Hour.find({}).sort({ date: -1, startTime: -1 });
+
+        // To make it easy for frontend, we can get all users and map them
+        const users = await User.find({}, 'username');
+        const userMap = {};
+        users.forEach(u =&amp;gt; {
+            userMap[u._id.toString()] = u.username;
+        });
+
+        // Attach username to each hour
+        const hoursWithUsernames = hours.map(h =&amp;gt; ({
+            ...h.toObject(),
+            username: userMap[h.userId] || 'Unknown User'
+        }));
+
+        return res.status(200).json({ ok: true, hours: hoursWithUsernames });
+    } catch (error) {
+        console.error('Error fetching all hours:', error);
+        return res.status(500).json({ ok: false, message: 'Server error fetching all hours' });
+    }
+};
+
+const getUserHours = async (req, res) =&amp;gt; {
+    const { userId } = req.params;
+    try {
+        const hours = await Hour.find({ userId }).sort({ date: -1, startTime: -1 });
+        return res.status(200).json({ ok: true, hours });
+    } catch (error) {
+        console.error('Error fetching user hours:', error);
+        return res.status(500).json({ ok: false, message: 'Server error fetching user hours' });
+    }
+};
+
+module.exports = { getAllUsers, resetUserPassword, deleteUser, getAllHours, getUserHours };
+&lt;/pre&gt;
+&lt;h2&gt;./controllers/auth.controller.js&lt;/h2&gt;
+&lt;pre&gt;const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');   // 👈 AGREGAR ESTA LINEA
+const User = require('../models/user.model');
+
+const register = async (req, res) =&amp;gt; {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, message: 'username and password required' });
+  }
+
+  const existing = await User.findOne({ username });
+  if (existing) {
+    return res.status(400).json({ ok: false, message: 'Username already exists' });
+  }
+
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  await User.create({ username, passwordHash });
+  return res.status(201).json({ ok: true, message: 'User created' });
+};
+
+const login = async (req, res) =&amp;gt; {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, message: 'username and password required' });
+  }
+
+  const user = await User.findOne({ username });
+  if (!user) {
+    return res.status(401).json({ ok: false, message: 'Invalid login' });
+  }
+
+  const match = bcrypt.compareSync(password, user.passwordHash);
+  if (!match) {
+    return res.status(401).json({ ok: false, message: 'Invalid login' });
+  }
+
+  // ✅ Crear JWT
+  const token = jwt.sign(
+    { userId: user._id.toString(), role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '2h' }
+  );
+
+  return res.status(200).json({
+    ok: true,
+    message: 'Login OK',
+    token,
+    role: user.role
+  });
+};
+
+const changePassword = async (req, res) =&amp;gt; {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.userId;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ ok: false, message: 'Old and new password required' });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ ok: false, message: 'User not found' });
+    }
+
+    const match = bcrypt.compareSync(oldPassword, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ ok: false, message: 'Invalid old password' });
+    }
+
+    user.passwordHash = bcrypt.hashSync(newPassword, 10);
+    await user.save();
+
+    return res.status(200).json({ ok: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    return res.status(500).json({ ok: false, message: 'Server error changing password' });
+  }
+};
+
+module.exports = { register, login, changePassword };&lt;/pre&gt;
+&lt;h2&gt;./controllers/workHours.controller.js&lt;/h2&gt;
+&lt;pre&gt;const WorkHours = require('../models/workHours.model');
+
+const createHours = async (req, res) =&amp;gt; {
+  const { date, hours, note } = req.body;
+
+  if (!date || hours === undefined) {
+    return res.status(400).json({ ok: false, message: 'date and hours required' });
+  }
+
+  const numHours = Number(hours);
+  if (Number.isNaN(numHours) || numHours &amp;lt; 0) {
+    return res.status(400).json({ ok: false, message: 'hours must be a number &amp;gt;= 0' });
+  }
+
+  const item = await WorkHours.create({
+    userId: req.userId,
+    date: new Date(date),
+    hours: numHours,
+    note: note || ''
+  });
+
+  return res.status(201).json({ ok: true, item });
+};
+
+const getMyHours = async (req, res) =&amp;gt; {
+  const items = await WorkHours.find({ userId: req.userId }).sort({ date: -1 });
+  return res.json({ ok: true, items });
+};
+
+const updateHours = async (req, res) =&amp;gt; {
+  const { id } = req.params;
+  const { date, hours, note } = req.body;
+
+  const doc = await WorkHours.findOne({ _id: id, userId: req.userId });
+  if (!doc) {
+    return res.status(404).json({ ok: false, message: 'Not found' });
+  }
+
+  if (date) doc.date = new Date(date);
+
+  if (hours !== undefined) {
+    const numHours = Number(hours);
+    if (Number.isNaN(numHours) || numHours &amp;lt; 0) {
+      return res.status(400).json({ ok: false, message: 'hours must be a number &amp;gt;= 0' });
+    }
+    doc.hours = numHours;
+  }
+
+  if (note !== undefined) doc.note = note;
+
+  await doc.save();
+  return res.json({ ok: true, item: doc });
+};
+
+const deleteHours = async (req, res) =&amp;gt; {
+  const { id } = req.params;
+
+  const deleted = await WorkHours.findOneAndDelete({ _id: id, userId: req.userId });
+  if (!deleted) {
+    return res.status(404).json({ ok: false, message: 'Not found' });
+  }
+
+  return res.json({ ok: true, message: 'Deleted' });
+};
+
+// ✅ Export al final
+module.exports = { createHours, getMyHours, updateHours, deleteHours };&lt;/pre&gt;
+&lt;h2&gt;./data/hours_old.json&lt;/h2&gt;
+&lt;pre&gt;[
+  {
+    "id": "1771257900724",
+    "date": "2026-02-16",
+    "startTime": "16:00",
+    "endTime": "19:00",
+    "description": "Cornestone"
+  },
+  {
+    "id": "1771433349840",
+    "date": "2026-02-18",
+    "startTime": "17:00",
+    "endTime": "19:00",
+    "description": "Conrnestone job"
+  }
+]&lt;/pre&gt;
+&lt;h2&gt;./inspection/inspection.controller.js&lt;/h2&gt;
+&lt;pre&gt;const fs = require('fs');
+const path = require('path');
+const { PDFDocument, StandardFonts } = require('pdf-lib');
+
+const Hour = require('../models/hours.model');
+
+exports.loadSelectHours = (req, res) =&amp;gt; {
+    res.sendFile(path.join(__dirname, '../public/select-hours.html'));
+};
+
+exports.handleSelectHour = async (req, res) =&amp;gt; {
+    const { hourId } = req.body;
+
+    if (!hourId) {
+        return res.status(400).json({ error: 'Missing hourId' });
+    }
+
+    try {
+        const hour = await Hour.findOne({ id: hourId, userId: req.userId });
+
+        if (!hour) {
+            return res.status(404).json({ error: 'Hour not found' });
+        }
+
+        const query =
+            `?date=${encodeURIComponent(hour.date)}` +
+            `&amp;amp;hourStart=${encodeURIComponent(hour.startTime)}` +
+            `&amp;amp;hourEnd=${encodeURIComponent(hour.endTime)}` +
+            `&amp;amp;description=${encodeURIComponent(hour.description || '')}`;
+
+        res.redirect(`/inspection${query}`);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+exports.loadForm = (req, res) =&amp;gt; {
+    res.sendFile(path.join(__dirname, '../public/inspection.html'));
+};
+
+exports.generatePDF = async (req, res) =&amp;gt; {
+    try {
+        console.log("BODY:", req.body);
+
+        const data = req.body;
+
+        const existingPdfBytes = fs.readFileSync(
+            path.join(__dirname, '../templates/inspection-template.pdf')
+        );
+
+        const pdfDoc = await PDFDocument.load(existingPdfBytes);
+        const page = pdfDoc.getPages()[0];
+
+        const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        page.drawText(data.operator || '', { x: 140, y: 627, size: 12, font });
+        page.drawText(data.date || '', { x: 443, y: 627, size: 12, font });
+        page.drawText(data.size || '', { x: 142, y: 607, size: 14, font });
+        page.drawText(data.serialNumber || '', { x: 303, y: 607, size: 12, font });
+        page.drawText(data.hourStart || '', { x: 452, y: 607, size: 12, font });
+        page.drawText(data.hourEnd || '', { x: 452, y: 587, size: 12, font });
+
+        page.drawText("Hour End:", { x: 390, y: 587, size: 12, font });
+
+        const drawX = (value, x, y) =&amp;gt; {
+            if (value &amp;amp;&amp;amp; value.trim() !== '') {
+                page.drawText('X', { x, y, size: 14, font });
+            }
+        };
+
+        drawX(data.field1, 282, 566);
+        drawX(data.field2, 282, 551);
+        drawX(data.field3, 282, 536);
+        drawX(data.field4, 282, 521);
+        drawX(data.field5, 282, 506);
+
+        drawX(data.field6, 282, 467);
+        drawX(data.field7, 282, 452);
+        drawX(data.field8, 282, 437);
+        drawX(data.field9, 282, 422);
+        drawX(data.field10, 282, 407);
+        drawX(data.field11, 282, 392);
+        drawX(data.field12, 282, 377);
+        drawX(data.field13, 282, 362);
+
+        drawX(data.field14, 517, 566);
+        drawX(data.field15, 517, 551);
+        drawX(data.field16, 517, 536);
+        drawX(data.field17, 517, 521);
+
+        drawX(data.field18, 517, 467);
+        drawX(data.field19, 517, 452);
+        drawX(data.field20, 517, 437);
+        drawX(data.field21, 517, 422);
+        drawX(data.field22, 517, 407);
+        drawX(data.field23, 517, 392);
+        drawX(data.field24, 517, 377);
+        drawX(data.field25, 517, 362);
+
+        drawX(data.field26, 196, 328);
+        drawX(data.field27, 196, 311);
+        drawX(data.field28, 196, 296);
+        drawX(data.field29, 196, 279);
+        drawX(data.field30, 196, 264);
+        drawX(data.field31, 196, 249);
+        drawX(data.field32, 196, 234);
+
+        const drawTextField = (value, x, y, width) =&amp;gt; {
+            if (value &amp;amp;&amp;amp; value.trim() !== '') {
+                const size = 10;
+                const textWidth = font.widthOfTextAtSize(value, size);
+                const offsetX = textWidth &amp;lt; width ? (width - textWidth) / 2 : 0;
+
+                page.drawText(value, {
+                    x: x + offsetX,
+                    y,
+                    size,
+                    font
+                });
+            }
+        };
+
+        for (let i = 33; i &amp;lt;= 39; i++) {
+            drawTextField(data[`field${i}`], 219, 328 - ((i - 33) * 16), 99);
+        }
+
+        for (let i = 40; i &amp;lt;= 46; i++) {
+            drawTextField(data[`field${i}`], 325, 328 - ((i - 40) * 16), 82);
+        }
+
+        for (let i = 47; i &amp;lt;= 53; i++) {
+            drawTextField(data[`field${i}`], 414, 328 - ((i - 47) * 16), 116);
+        }
+
+        if (data.comments &amp;amp;&amp;amp; data.comments.trim() !== '') {
+            page.drawText(data.comments.trim(), {
+                x: 87,
+                y: 190,
+                size: 11,
+                maxWidth: 450,
+                lineHeight: 10
+            });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename=inspection.pdf');
+        res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error generating PDF');
+    }
+};&lt;/pre&gt;
+&lt;h2&gt;./inspection/inspection.model.js&lt;/h2&gt;
+&lt;pre&gt;&lt;/pre&gt;
+&lt;h2&gt;./inspection/inspection.routes.js&lt;/h2&gt;
+&lt;pre&gt;const express = require('express');
+const router = express.Router();
+const controller = require('./inspection.controller');
+
+// Existing inspection routes
+router.get('/', controller.loadForm);
+router.post('/pdf', controller.generatePDF);
+
+// New routes for selecting hours
+router.get('/select-hours', controller.loadSelectHours);
+router.post('/select-hours', controller.handleSelectHour);
+
+module.exports = router;&lt;/pre&gt;
+&lt;h2&gt;./middleware/auth.middleware.js&lt;/h2&gt;
+&lt;pre&gt;const jwt = require('jsonwebtoken');
+
+const requireAuth = (req, res, next) =&amp;gt; {
+  const header = req.headers.authorization; // "Bearer token"
+  if (!header) return res.status(401).json({ ok: false, message: 'Missing Authorization header' });
+
+  const parts = header.split(' ');
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    return res.status(401).json({ ok: false, message: 'Invalid Authorization format' });
+  }
+
+  const token = parts[1];
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = payload.userId;
+    req.role = payload.role; // Extract role from JWT
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, message: 'Invalid token' });
+  }
+};
+
+const requireAdmin = (req, res, next) =&amp;gt; {
+  if (req.role !== 'admin') {
+    return res.status(403).json({ ok: false, message: 'Forbidden: Admin access required' });
+  }
+  next();
+};
+
+module.exports = { requireAuth, requireAdmin };&lt;/pre&gt;
+&lt;h2&gt;./models/hours.model.js&lt;/h2&gt;
+&lt;pre&gt;const mongoose = require('mongoose');
+
+const hourSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },   // mantengo tu id string
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    date: { type: String, required: true },
+    startTime: { type: String, required: true },
+    endTime: { type: String, required: true },
+    description: { type: String, default: '' },
+    recordType: { type: String, enum: ['work', 'practicum'], default: 'work' }
+});
+
+module.exports = mongoose.model('Hour', hourSchema);&lt;/pre&gt;
+&lt;h2&gt;./models/user.model.js&lt;/h2&gt;
+&lt;pre&gt;const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' }
+}, { timestamps: true });
+
+module.exports = mongoose.model('User', userSchema);&lt;/pre&gt;
+&lt;h2&gt;./models/workHours.model.js&lt;/h2&gt;
+&lt;pre&gt;const mongoose = require('mongoose');
+
+const workHoursSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'User'
+  },
+  date: {
+    type: Date,
+    required: true
+  },
+  hours: {
+    type: Number,
+    required: true
+  },
+  note: {
+    type: String
+  }
+}, { timestamps: true });
+
+module.exports = mongoose.model('WorkHours', workHoursSchema);&lt;/pre&gt;
+&lt;h2&gt;./package.json&lt;/h2&gt;
+&lt;pre&gt;{
+  "name": "work-hours-manager",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" &amp;amp;&amp;amp; exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.2.3",
+    "pdf-lib": "^1.17.1"
+  }
+}
+&lt;/pre&gt;
+</pre>
+<h2>./public/admin.html</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="es"&gt;
+
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;📅 Panel de Administrador - Banglabash WorkFlow&lt;/title&gt;
+    &lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;
+    &lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+    &lt;link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap" rel="stylesheet"&gt;
+    &lt;link rel="stylesheet" href="style.css"&gt;
+    &lt;link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+    &lt;div class="background-blobs"&gt;
+        &lt;div class="blob blob-1"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-2"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-3"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class="container"&gt;
+        &lt;header style="display: flex; justify-content: space-between; align-items: center; width: 100%;"&gt;
+            &lt;div&gt;
+                &lt;h1&gt;&lt;i class="fa-solid fa-users-cog"&gt;&lt;/i&gt; Panel de Administrador&lt;/h1&gt;
+                &lt;p&gt;Gestionar Usuarios y Horas Globales&lt;/p&gt;
+            &lt;/div&gt;
+            &lt;div class="user-actions" style="display: flex; gap: 1rem;"&gt;
+                &lt;button id="btn-back-home" class="btn-secondary" style="font-size: 0.9rem; padding: 0.5rem 1rem;"&gt;
+                    &lt;i class="fa-solid fa-home"&gt;&lt;/i&gt; Volver a la App
+                &lt;/button&gt;
+                &lt;button id="btn-logout" class="btn-primary"
+                    style="background: var(--danger-color, #ef4444); border-color: var(--danger-color, #ef4444); font-size: 0.9rem; padding: 0.5rem 1rem;"&gt;
+                    &lt;i class="fa-solid fa-sign-out-alt"&gt;&lt;/i&gt; Cerrar Sesión
+                &lt;/button&gt;
+            &lt;/div&gt;
+        &lt;/header&gt;
+
+        &lt;main&gt;
+            &lt;section class="glass" style="padding: 2rem; margin-top: 2rem;"&gt;
+                &lt;div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;"&gt;
+                    &lt;h2&gt;Administración&lt;/h2&gt;
+                    &lt;div&gt;
+                        &lt;button id="btn-view-users" class="btn-primary" style="margin-right: 10px;"&gt;Usuarios&lt;/button&gt;
+                        &lt;button id="btn-view-all-hours" class="btn-secondary"&gt;Horas Globales&lt;/button&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;!-- Admin Users View --&gt;
+                &lt;div id="admin-users-view"&gt;
+                    &lt;h3&gt;Lista de Usuarios&lt;/h3&gt;
+                    &lt;div id="admin-users-list" class="entries-list"&gt;
+                        &lt;!-- Users injected here --&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;!-- Admin All Hours View --&gt;
+                &lt;div id="admin-all-hours-view" style="display: none;"&gt;
+                    &lt;div style="display: flex; justify-content: space-between; align-items: center;"&gt;
+                        &lt;h3&gt;Todas las Horas Registradas&lt;/h3&gt;
+                        &lt;p&gt;&lt;strong&gt;Total Global:&lt;/strong&gt; &lt;span id="admin-global-total"&gt;0h 0m&lt;/span&gt;&lt;/p&gt;
+                    &lt;/div&gt;
+                    &lt;div id="admin-all-hours-list" class="entries-list" style="margin-top: 1rem;"&gt;
+                        &lt;!-- Hours injected here --&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+            &lt;/section&gt;
+        &lt;/main&gt;
+
+        &lt;!-- Admin Reset Password Modal --&gt;
+        &lt;div id="admin-reset-pw-modal" class="modal-overlay"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; justify-content: center; align-items: center;"&gt;
+            &lt;div class="card glass" style="width: 100%; max-width: 400px; padding: 2rem;"&gt;
+                &lt;div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;"&gt;
+                    &lt;h3 style="margin: 0;"&gt;Resetear Contraseña&lt;/h3&gt;
+                    &lt;button id="close-admin-reset-modal"
+                        style="background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem;"&gt;&lt;i
+                            class="fa-solid fa-times"&gt;&lt;/i&gt;&lt;/button&gt;
+                &lt;/div&gt;
+                &lt;form id="admin-reset-pw-form"&gt;
+                    &lt;div style="margin-bottom: 1rem;"&gt;
+                        &lt;strong&gt;Usuario: &lt;/strong&gt; &lt;span id="admin-reset-pw-username"&gt;&lt;/span&gt;
+                    &lt;/div&gt;
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="admin-new-password"&gt;Nueva Contraseña&lt;/label&gt;
+                        &lt;input type="password" id="admin-new-password" required&gt;
+                    &lt;/div&gt;
+                    &lt;button type="submit" class="btn-primary" style="width: 100%;"&gt;Cambiar Contraseña&lt;/button&gt;
+                    &lt;div id="admin-password-error" class="error-msg" style="margin-top: 1rem; text-align: center;"&gt;
+                    &lt;/div&gt;
+                &lt;/form&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;!-- Admin User Specific Hours Modal --&gt;
+        &lt;div id="admin-user-hours-modal" class="modal-overlay"
+            style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1002; justify-content: center; align-items: center; overflow-y: auto; padding: 2rem;"&gt;
+            &lt;div class="card glass"
+                style="width: 100%; max-width: 800px; padding: 2rem; max-height: 90vh; overflow-y: auto;"&gt;
+                &lt;div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;"&gt;
+                    &lt;h3 style="margin: 0;"&gt;Horas de: &lt;span id="admin-user-hours-username"
+                            style="color: var(--primary-color);"&gt;&lt;/span&gt;&lt;/h3&gt;
+                    &lt;button id="close-admin-user-hours-modal"
+                        style="background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem;"&gt;&lt;i
+                            class="fa-solid fa-times"&gt;&lt;/i&gt;&lt;/button&gt;
+                &lt;/div&gt;
+                &lt;div style="margin-bottom: 1rem;"&gt;
+                    &lt;strong&gt;Total Acumulado:&lt;/strong&gt; &lt;span id="admin-user-total-hours"
+                        style="color: #10b981; font-weight: bold;"&gt;0h 0m&lt;/span&gt;
+                &lt;/div&gt;
+                &lt;div id="admin-user-specific-hours-list" class="entries-list"&gt;
+                    &lt;!-- Specific User Hours injected here --&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+
+    &lt;/div&gt;
+
+    &lt;script src="admin.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+<h2>./public/admin.js</h2>
+<pre>document.addEventListener('DOMContentLoaded', () =&gt; {
+    // Check for token and admin role before anything else
+    const token = localStorage.getItem('token');
+    const role = localStorage.getItem('role');
+
+    if (!token) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    if (role !== 'admin') {
+        alert('Acceso denegado: Se requieren permisos de administrador');
+        window.location.href = 'index.html';
+        return;
+    }
+
+    const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+    };
+
+    // Logout logic
+    document.getElementById('btn-logout').addEventListener('click', () =&gt; {
+        localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        window.location.href = 'login.html';
+    });
+
+    // Go back logic
+    document.getElementById('btn-back-home').addEventListener('click', () =&gt; {
+        window.location.href = 'index.html';
+    });
+
+    // Load users by default
+    fetchAdminUsers();
+
+    // Admin Tabs
+    document.getElementById('btn-view-users')?.addEventListener('click', () =&gt; {
+        document.getElementById('admin-users-view').style.display = 'block';
+        document.getElementById('admin-all-hours-view').style.display = 'none';
+        fetchAdminUsers();
+    });
+
+    document.getElementById('btn-view-all-hours')?.addEventListener('click', () =&gt; {
+        document.getElementById('admin-users-view').style.display = 'none';
+        document.getElementById('admin-all-hours-view').style.display = 'block';
+        fetchAdminAllHours();
+    });
+
+    // Admin functionality functions
+    async function fetchAdminUsers() {
+        try {
+            const res = await fetch('/api/admin/users', { headers: authHeaders });
+            const data = await res.json();
+            if (data.ok) {
+                renderAdminUsers(data.users);
+            } else {
+                alert('Error fetching users: ' + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function renderAdminUsers(users) {
+        const list = document.getElementById('admin-users-list');
+        list.innerHTML = '';
+        if (users.length === 0) {
+            list.innerHTML = '&lt;p&gt;No users found&lt;/p&gt;';
+            return;
+        }
+
+        const table = document.createElement('table');
+        table.style.width = '100%';
+        table.innerHTML = `
+            &lt;thead&gt;
+                &lt;tr style="text-align: left;"&gt;
+                    &lt;th&gt;Username&lt;/th&gt;
+                    &lt;th&gt;Role&lt;/th&gt;
+                    &lt;th&gt;Acciones&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+                ${users.map(u =&gt; `
+                    &lt;tr&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${escapeHtml(u.username)}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;&lt;span class="duration-pill" style="background: ${u.role === 'admin' ? 'var(--primary-color)' : 'var(--bg-card)'}"&gt;${u.role}&lt;/span&gt;&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;
+                            &lt;button class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;" onclick="openAdminUserHoursModal('${u._id}', '${escapeHtml(u.username)}')"&gt;&lt;i class="fa-solid fa-clock"&gt;&lt;/i&gt; Ver Horas&lt;/button&gt;
+                            &lt;button class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;" onclick="openAdminResetModal('${u._id}', '${escapeHtml(u.username)}')"&gt;Cambiar Contraseña&lt;/button&gt;
+                            ${u.username !== localStorage.getItem('username') ? `&lt;button class="btn-primary" style="background: var(--danger-color); border-color: var(--danger-color); padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="adminDeleteUser('${u._id}')"&gt;&lt;i class="fa-solid fa-trash"&gt;&lt;/i&gt;&lt;/button&gt;` : ''}
+                        &lt;/td&gt;
+                    &lt;/tr&gt;
+                `).join('')}
+            &lt;/tbody&gt;
+        `;
+        list.appendChild(table);
+    }
+
+    window.openAdminResetModal = (userId, username) =&gt; {
+        const modal = document.getElementById('admin-reset-pw-modal');
+        const form = document.getElementById('admin-reset-pw-form');
+        document.getElementById('admin-reset-pw-username').textContent = username;
+        form.dataset.userId = userId;
+        modal.style.display = 'flex';
+    };
+
+    document.getElementById('close-admin-reset-modal')?.addEventListener('click', () =&gt; {
+        const modal = document.getElementById('admin-reset-pw-modal');
+        modal.style.display = 'none';
+        document.getElementById('admin-reset-pw-form').reset();
+        document.getElementById('admin-password-error').textContent = '';
+    });
+
+    document.getElementById('admin-reset-pw-form')?.addEventListener('submit', async (e) =&gt; {
+        e.preventDefault();
+        const userId = e.target.dataset.userId;
+        const newPassword = document.getElementById('admin-new-password').value;
+        const errEl = document.getElementById('admin-password-error');
+
+        try {
+            const res = await fetch('/api/admin/users/password', {
+                method: 'PUT',
+                headers: authHeaders,
+                body: JSON.stringify({ userId, newPassword })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                errEl.style.color = '#10b981';
+                errEl.textContent = '¡Contraseña actualizada con éxito!';
+                setTimeout(() =&gt; {
+                    document.getElementById('admin-reset-pw-modal').style.display = 'none';
+                    e.target.reset();
+                    errEl.textContent = '';
+                }, 2000);
+            } else {
+                errEl.style.color = '#ef4444';
+                errEl.textContent = data.message || 'Error reseteando contraseña';
+            }
+        } catch (err) {
+            errEl.style.color = '#ef4444';
+            errEl.textContent = 'Error de conexión';
+        }
+    });
+
+    window.adminDeleteUser = async (userId) =&gt; {
+        if (!confirm('¿Estás seguro de que deseas eliminar este usuario y todas sus horas registradas? Esta acción no se puede deshacer.')) return;
+        try {
+            const res = await fetch(`/api/admin/users/${userId}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            if (res.ok) {
+                fetchAdminUsers();
+            } else {
+                const data = await res.json();
+                alert('Error al eliminar usuario: ' + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    window.openAdminUserHoursModal = async (userId, username) =&gt; {
+        const modal = document.getElementById('admin-user-hours-modal');
+        document.getElementById('admin-user-hours-username').textContent = username;
+        const list = document.getElementById('admin-user-specific-hours-list');
+        const totalSpan = document.getElementById('admin-user-total-hours');
+
+        list.innerHTML = '&lt;p&gt;Cargando horas...&lt;/p&gt;';
+        totalSpan.textContent = '0h 0m';
+        modal.style.display = 'flex';
+
+        try {
+            const res = await fetch(`/api/admin/users/${userId}/hours`, { headers: authHeaders });
+            const data = await res.json();
+
+            if (data.ok) {
+                renderSpecificUserHours(data.hours, list, totalSpan);
+            } else {
+                list.innerHTML = `&lt;p style="color: var(--danger-color);"&gt;Error fetching hours: ${data.message}&lt;/p&gt;`;
+            }
+        } catch (err) {
+            console.error(err);
+            list.innerHTML = `&lt;p style="color: var(--danger-color);"&gt;Connection error fetching explicit hours.&lt;/p&gt;`;
+        }
+    };
+
+    document.getElementById('close-admin-user-hours-modal')?.addEventListener('click', () =&gt; {
+        document.getElementById('admin-user-hours-modal').style.display = 'none';
+    });
+
+    function renderSpecificUserHours(hours, listElement, totalSpanElement) {
+        listElement.innerHTML = '';
+        let totalMinutesForUser = 0;
+
+        if (hours.length === 0) {
+            listElement.innerHTML = '&lt;p&gt;Este usuario no tiene horas registradas en el sistema.&lt;/p&gt;';
+            return;
+        }
+
+        const table = document.createElement('table');
+        table.style.width = '100%';
+        table.innerHTML = `
+            &lt;thead&gt;
+                &lt;tr style="text-align: left;"&gt;
+                    &lt;th&gt;Fecha&lt;/th&gt;
+                    &lt;th&gt;Inicio&lt;/th&gt;
+                    &lt;th&gt;Fin&lt;/th&gt;
+                    &lt;th&gt;Descripción&lt;/th&gt;
+                    &lt;th&gt;Duración&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+                ${hours.map(h =&gt; {
+            const duration = calculateDuration(h.startTime, h.endTime);
+            totalMinutesForUser += duration;
+            return `
+                    &lt;tr&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${formatDateShort(new Date(h.date + 'T00:00:00'))}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${h.startTime}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${h.endTime}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${escapeHtml(h.description || 'Sin descripción')}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;&lt;span class="duration-pill"&gt;${formatDuration(duration)}&lt;/span&gt;&lt;/td&gt;
+                    &lt;/tr&gt;
+                `}).join('')}
+            &lt;/tbody&gt;
+        `;
+        listElement.appendChild(table);
+        totalSpanElement.textContent = formatDuration(totalMinutesForUser);
+    }
+
+    async function fetchAdminAllHours() {
+        try {
+            const res = await fetch('/api/admin/hours', { headers: authHeaders });
+            const data = await res.json();
+            if (data.ok) {
+                renderAdminAllHours(data.hours);
+            } else {
+                alert('Error fetching all hours: ' + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function renderAdminAllHours(hours) {
+        const list = document.getElementById('admin-all-hours-list');
+        list.innerHTML = '';
+        let totalGlobalMinutes = 0;
+
+        if (hours.length === 0) {
+            list.innerHTML = '&lt;p&gt;No hay horas registradas en el sistema aún.&lt;/p&gt;';
+            document.getElementById('admin-global-total').textContent = '0h 0m';
+            return;
+        }
+
+        const table = document.createElement('table');
+        table.style.width = '100%';
+        table.innerHTML = `
+            &lt;thead&gt;
+                &lt;tr style="text-align: left;"&gt;
+                    &lt;th&gt;Usuario&lt;/th&gt;
+                    &lt;th&gt;Fecha&lt;/th&gt;
+                    &lt;th&gt;Inicio&lt;/th&gt;
+                    &lt;th&gt;Fin&lt;/th&gt;
+                    &lt;th&gt;Duración&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+                ${hours.map(h =&gt; {
+            const duration = calculateDuration(h.startTime, h.endTime);
+            totalGlobalMinutes += duration;
+            return `
+                    &lt;tr&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;&lt;strong&gt;${escapeHtml(h.username)}&lt;/strong&gt;&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${formatDateShort(new Date(h.date + 'T00:00:00'))}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${h.startTime}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;${h.endTime}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"&gt;&lt;span class="duration-pill"&gt;${formatDuration(duration)}&lt;/span&gt;&lt;/td&gt;
+                    &lt;/tr&gt;
+                `}).join('')}
+            &lt;/tbody&gt;
+        `;
+        list.appendChild(table);
+        document.getElementById('admin-global-total').textContent = formatDuration(totalGlobalMinutes);
+    }
+
+    // Helper functions
+    function calculateDuration(start, end) {
+        const [startH, startM] = start.split(':').map(Number);
+        const [endH, endM] = end.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        return endMinutes - startMinutes;
+    }
+
+    function formatDuration(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${h}h ${m}m`;
+    }
+
+    function formatDateShort(date) {
+        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&amp;/g, "&amp;amp;")
+            .replace(/&lt;/g, "&amp;lt;")
+            .replace(/&gt;/g, "&amp;gt;")
+            .replace(/"/g, "&amp;quot;")
+            .replace(/'/g, "&amp;#039;");
+    }
+});
+</pre>
+<h2>./public/index.html</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="es"&gt;
+
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+
+    &lt;title&gt;Banglabash WorkFlow&lt;/title&gt;
+
+        &lt;link rel="icon" type="image/png" href="/images/Hours.png"&gt;
+
+
+    &lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;
+    &lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+
+    &lt;link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap"
+        rel="stylesheet"&gt;
+
+    &lt;link rel="stylesheet" href="style.css"&gt;
+
+    &lt;link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"&gt;
+
+    &lt;style&gt;
+
+        @media (max-width: 768px) {
+
+            .container {
+                padding: 1rem;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 1rem;
+            }
+
+            .user-actions {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .user-actions button {
+                width: 100%;
+            }
+
+            .dashboard {
+                display: grid;
+                grid-template-columns: 1fr !important;
+                gap: 1rem;
+            }
+
+            .form-row {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .history-tabs {
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .entries-section {
+                overflow-x: auto;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .stat {
+                font-size: 2rem;
+            }
+
+        }
+
+    &lt;/style&gt;
+
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div class="background-blobs"&gt;
+        &lt;div class="blob blob-1"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-2"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-3"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class="container"&gt;
+
+        &lt;header style="display: flex; justify-content: space-between; align-items: center; width: 100%;"&gt;
+
+            &lt;div&gt;
+                &lt;h1&gt;
+                    &lt;i class="fa-solid fa-clock"&gt;&lt;/i&gt;
+                    Banglabash WorkFlow
+                &lt;/h1&gt;
+
+                &lt;p&gt;Manage your Time&lt;/p&gt;
+            &lt;/div&gt;
+
+            &lt;div class="user-actions" style="display: flex; gap: 1rem;"&gt;
+
+                &lt;button id="btn-menu"
+                    class="btn-secondary"
+                    style="font-size: 0.9rem; padding: 0.5rem 1rem;"&gt;
+
+                    &lt;i class="fa-solid fa-house"&gt;&lt;/i&gt;
+                    Menu
+                &lt;/button&gt;
+
+                &lt;button id="btn-admin-panel"
+                    class="btn-secondary"
+                    style="font-size: 0.9rem; padding: 0.5rem 1rem; display: none;"&gt;
+
+                    &lt;i class="fa-solid fa-users-cog"&gt;&lt;/i&gt;
+                    Admin
+                &lt;/button&gt;
+
+                &lt;button id="btn-change-password"
+                    class="btn-secondary"
+                    style="font-size: 0.9rem; padding: 0.5rem 1rem;"&gt;
+
+                    &lt;i class="fa-solid fa-key"&gt;&lt;/i&gt;
+                    Key
+                &lt;/button&gt;
+
+                &lt;button id="btn-logout"
+                    class="btn-primary"
+                    style="background: var(--danger-color, #ef4444);
+                           border-color: var(--danger-color, #ef4444);
+                           font-size: 0.9rem;
+                           padding: 0.5rem 1rem;"&gt;
+
+                    &lt;i class="fa-solid fa-sign-out-alt"&gt;&lt;/i&gt;
+                    Logout
+                &lt;/button&gt;
+
+            &lt;/div&gt;
+
+        &lt;/header&gt;
+
+        &lt;!-- Password Modal --&gt;
+
+        &lt;div id="password-modal"
+            class="modal-overlay"
+            style="display:none;
+                   position:fixed;
+                   top:0;
+                   left:0;
+                   width:100%;
+                   height:100%;
+                   background:rgba(0,0,0,0.5);
+                   z-index:1000;
+                   justify-content:center;
+                   align-items:center;"&gt;
+
+            &lt;div class="card glass"
+                style="width:100%;
+                       max-width:400px;
+                       padding:2rem;"&gt;
+
+                &lt;div style="display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            margin-bottom:1.5rem;"&gt;
+
+                    &lt;h3 style="margin:0;"&gt;Change Password&lt;/h3&gt;
+
+                    &lt;button id="close-modal"
+                        style="background:none;
+                               border:none;
+                               color:white;
+                               cursor:pointer;
+                               font-size:1.2rem;"&gt;
+
+                        &lt;i class="fa-solid fa-times"&gt;&lt;/i&gt;
+
+                    &lt;/button&gt;
+
+                &lt;/div&gt;
+
+                &lt;form id="password-form"&gt;
+
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="old-password"&gt;Current Password&lt;/label&gt;
+                        &lt;input type="password" id="old-password" required&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="new-password"&gt;New Password&lt;/label&gt;
+                        &lt;input type="password" id="new-password" required&gt;
+                    &lt;/div&gt;
+
+                    &lt;button type="submit"
+                        class="btn-primary"
+                        style="width:100%;"&gt;
+
+                        Submit
+                    &lt;/button&gt;
+
+                    &lt;div id="password-error"
+                        class="error-msg"
+                        style="margin-top:1rem;
+                               text-align:center;"&gt;
+                    &lt;/div&gt;
+
+                &lt;/form&gt;
+
+            &lt;/div&gt;
+
+        &lt;/div&gt;
+
+        &lt;main&gt;
+
+            &lt;section class="dashboard"&gt;
+
+                &lt;div class="card glass"&gt;
+                    &lt;h3&gt;Total Today&lt;/h3&gt;
+                    &lt;div class="stat" id="total-today"&gt;0h 0m&lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;div class="card glass"&gt;
+                    &lt;h3&gt;Total Week&lt;/h3&gt;
+                    &lt;div class="stat" id="total-week"&gt;0h 0m&lt;/div&gt;
+                &lt;/div&gt;
+
+            &lt;/section&gt;
+
+            &lt;section class="input-section glass"&gt;
+
+                &lt;h2&gt;New Schedule&lt;/h2&gt;
+
+                &lt;form id="work-form"&gt;
+
+                    &lt;div class="form-group type-selector"
+                        style="display:flex;
+                               gap:1rem;
+                               margin-bottom:1rem;"&gt;
+
+                        &lt;label class="radio-card"
+                            style="flex:1;
+                                   cursor:pointer;"&gt;
+
+                            &lt;input type="radio"
+                                name="recordType"
+                                value="work"
+                                checked
+                                style="display:none;"&gt;
+
+                            &lt;div class="card-content glass"
+                                id="card-work"
+                                style="text-align:center;
+                                       padding:0.5rem;
+                                       border:2px solid var(--primary-color);
+                                       border-radius:8px;"&gt;
+
+                                Hours of Work
+                            &lt;/div&gt;
+
+                        &lt;/label&gt;
+
+                        &lt;label class="radio-card"
+                            style="flex:1;
+                                   cursor:pointer;"&gt;
+
+                            &lt;input type="radio"
+                                name="recordType"
+                                value="practicum"
+                                style="display:none;"&gt;
+
+                            &lt;div class="card-content glass"
+                                id="card-practicum"
+                                style="text-align:center;
+                                       padding:0.5rem;
+                                       border:2px solid transparent;
+                                       border-radius:8px;"&gt;
+
+                                Hours of Practicum
+                            &lt;/div&gt;
+
+                        &lt;/label&gt;
+
+                    &lt;/div&gt;
+
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="date"&gt;Date&lt;/label&gt;
+                        &lt;input type="date" id="date" required&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="form-row"&gt;
+
+                        &lt;div class="form-group"&gt;
+                            &lt;label for="start-time"&gt;Start Time&lt;/label&gt;
+                            &lt;input type="time" id="start-time" required&gt;
+                        &lt;/div&gt;
+
+                        &lt;div class="form-group"&gt;
+                            &lt;label for="end-time"&gt;End Time&lt;/label&gt;
+                            &lt;input type="time" id="end-time" required&gt;
+                        &lt;/div&gt;
+
+                    &lt;/div&gt;
+
+                    &lt;div class="form-group toggle-group"
+                        style="display:flex;
+                               align-items:center;
+                               gap:1rem;
+                               margin-top:1rem;
+                               margin-bottom:1.25rem;"&gt;
+
+                        &lt;label class="switch"&gt;
+                            &lt;input type="checkbox" id="day-off-toggle"&gt;
+                            &lt;span class="slider round"&gt;&lt;/span&gt;
+                        &lt;/label&gt;
+
+                        &lt;span style="font-weight:600;
+                                     color:var(--text-color);"&gt;
+
+                            Day Off
+                        &lt;/span&gt;
+
+                    &lt;/div&gt;
+
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="description"&gt;Description&lt;/label&gt;
+
+                        &lt;input type="text"
+                            id="description"
+                            value="CornerStone"
+                            placeholder="What did you work on?"
+                            autocomplete="off"&gt;
+                    &lt;/div&gt;
+
+                    &lt;button type="submit" class="btn-primary"&gt;
+
+                        &lt;i class="fa-solid fa-plus"&gt;&lt;/i&gt;
+                        Add
+
+                    &lt;/button&gt;
+
+                    &lt;div id="form-error" class="error-msg"&gt;&lt;/div&gt;
+
+                &lt;/form&gt;
+
+            &lt;/section&gt;
+
+            &lt;section class="entries-section glass"&gt;
+
+                &lt;div style="display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            margin-bottom:1.5rem;"&gt;
+
+                    &lt;h2 style="margin:0;"&gt;History&lt;/h2&gt;
+
+                    &lt;div class="history-tabs"
+                        style="display:flex;
+                               gap:0.5rem;
+                               background:rgba(15,23,42,0.6);
+                               padding:0.25rem;
+                               border-radius:8px;"&gt;
+
+                        &lt;button type="button"
+                            id="tab-work"
+                            class="tab-btn active"
+                            style="background:var(--primary-color);
+                                   border:none;
+                                   padding:0.5rem 1rem;
+                                   border-radius:6px;
+                                   color:white;
+                                   cursor:pointer;
+                                   font-weight:600;
+                                   transition:all 0.2s;"&gt;
+
+                            Hours of Work
+                        &lt;/button&gt;
+
+                        &lt;button type="button"
+                            id="tab-practicum"
+                            class="tab-btn"
+                            style="background:transparent;
+                                   border:none;
+                                   padding:0.5rem 1rem;
+                                   border-radius:6px;
+                                   color:var(--text-muted);
+                                   cursor:pointer;
+                                   font-weight:600;
+                                   transition:all 0.2s;"&gt;
+
+                            Hours of Practicum
+                        &lt;/button&gt;
+
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+
+                &lt;div id="entries-list" class="entries-list"&gt;
+
+                    &lt;div class="empty-state"&gt;
+
+                        &lt;i class="fa-regular fa-calendar-xmark"&gt;&lt;/i&gt;
+
+                        &lt;p&gt;No entries yet&lt;/p&gt;
+
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+
+            &lt;/section&gt;
+
+        &lt;/main&gt;
+
+    &lt;/div&gt;
+
+    &lt;script&gt;
+
+        document.getElementById('btn-menu')
+            .addEventListener('click', () =&gt; {
+
+                window.location.href = 'menu.html';
+
+            });
+
+    &lt;/script&gt;
+
+    &lt;script src="script.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+<h2>./public/inspection.html</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+
+&lt;head&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+
+    &lt;link rel="icon" type="image/png" href="/images/Inspection.png"&gt;
+
+    &lt;style&gt;
+        body {
+            margin: 0;
+            font-family: Arial;
+            padding-bottom: 100px;
+        }
+
+        #form-wrapper {
+            width: 100%;
+            overflow: auto;
+        }
+
+        #form-container {
+            position: relative;
+            width: 800px;
+            transform-origin: top left;
+        }
+
+        #form-container img {
+            width: 100%;
+        }
+
+        .field {
+            position: absolute;
+            border: 1px solid black;
+            border-bottom: 1px solid black;
+            background: rgba(250, 235, 215, 0.5);
+            font-size: 18px;
+            font-weight: bold;
+
+            height: 22px;
+            line-height: 23px;
+            padding: 0;
+        }
+
+        .fieldX {
+            position: absolute;
+            border: 1px solid black;
+            background: rgba(250, 235, 215, 0.5);
+
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+
+            height: 22px;
+            line-height: 23px;
+            padding: 0;
+        }
+
+        .btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 15px;
+            background: black;
+            color: white;
+            border: none;
+            font-size: 16px;
+            z-index: 9999;
+        }
+
+        .label {
+            position: absolute;
+            font-size: 20px;
+            font-weight: bold;
+            color: black;
+        }
+
+        .fieldCenter {
+            position: absolute;
+            border: 1px solid black;
+
+            height: 22px;
+            line-height: 23px;
+            padding: 0;
+
+            /* border-bottom: 1px solid black; */
+            background: rgba(250, 235, 215, 0.5);
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div id="form-wrapper"&gt;
+        &lt;div id="form-container"&gt;
+
+            &lt;!-- 👇 OJO: asegúrate que esta ruta existe --&gt;
+            &lt;img src="/images/form.png"&gt;
+            &lt;script&gt;
+                document.addEventListener('DOMContentLoaded', () =&gt; {
+                    const qp = new URLSearchParams(window.location.search);
+                    if (qp.has('date')) document.getElementById('date').value = qp.get('date');
+                    if (qp.has('hourStart')) document.getElementById('hourStart').value = qp.get('hourStart');
+                    if (qp.has('hourEnd')) document.getElementById('hourEnd').value = qp.get('hourEnd');
+                });
+            &lt;/script&gt;
+
+            &lt;!-- Operator --&gt;
+            &lt;input id="operator" class="field" style="top: 308px; left: 160px; width: 380px;"
+                placeholder="Enter operator name"&gt;
+
+            &lt;!-- Date --&gt;
+            &lt;input type="date" id="date" class="field" style="top: 308px; left: 600px; width: 120px;"&gt;
+
+            &lt;!-- Long or Small --&gt;
+            &lt;input id="size" class="field" style="top: 338px; left: 160px; width: 150px;" placeholder="Long or Small"&gt;
+
+            &lt;!-- Serial Number --&gt;
+            &lt;input id="serialNumber" class="field" style="top: 338px; left: 395px; width: 150px;"&gt;
+
+            &lt;!-- Hour Start --&gt;
+            &lt;input id="hourStart" class="field" style="top: 338px; left: 605px; width: 120px;" placeholder="Hour Start"&gt;
+
+
+            &lt;p class="label" style="top: 350px; left: 495px;"&gt;End Hours:&lt;/p&gt;
+            &lt;!-- Hour End --&gt;
+            &lt;input id="hourEnd" class="field" style="top: 368px; left: 605px; width: 120px;" placeholder="Hour End"&gt;
+
+            &lt;!-- field1 --&gt;
+            &lt;input id="field1" name="field1" class="fieldX" style="top: 400px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field2 --&gt;
+            &lt;input id="field2" name="field2" class="fieldX" style="top: 422px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field3 --&gt;
+            &lt;input id="field3" name="field3" class="fieldX" style="top: 444px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field4 --&gt;
+            &lt;input id="field4" name="field4" class="fieldX" style="top: 466px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field5 --&gt;
+            &lt;input id="field5" name="field5" class="fieldX" style="top: 488px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field6 --&gt;
+            &lt;input id="field6" name="field6" class="fieldX" style="top: 543px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field7 --&gt;
+            &lt;input id="field7" name="field7" class="fieldX" style="top: 565px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field8 --&gt;
+            &lt;input id="field8" name="field8" class="fieldX" style="top: 586px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field9 --&gt;
+            &lt;input id="field9" name="field9" class="fieldX" style="top: 608px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field10 --&gt;
+            &lt;input id="field10" name="field10" class="fieldX" style="top: 630px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field11 --&gt;
+            &lt;input id="field11" name="field11" class="fieldX" style="top: 652px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field12 --&gt;
+            &lt;input id="field12" name="field12" class="fieldX" style="top: 674px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field13 --&gt;
+            &lt;input id="field13" name="field13" class="fieldX" style="top: 696px; left: 357px; width: 23px;"&gt;
+            &lt;!-- field14 --&gt;
+            &lt;input id="field14" name="field14" class="fieldX" style="top: 401px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field15 --&gt;
+            &lt;input id="field15" name="field15" class="fieldX" style="top: 422px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field16 --&gt;
+            &lt;input id="field16" name="field16" class="fieldX" style="top: 444px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field17 --&gt;
+            &lt;input id="field17" name="field17" class="fieldX" style="top: 466px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field18 --&gt;
+            &lt;input id="field18" name="field18" class="fieldX" style="top: 543px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field19 --&gt;
+            &lt;input id="field19" name="field19" class="fieldX" style="top: 565px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field20 --&gt;
+            &lt;input id="field20" name="field20" class="fieldX" style="top: 586px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field21 --&gt;
+            &lt;input id="field21" name="field21" class="fieldX" style="top: 608px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field22 --&gt;
+            &lt;input id="field22" name="field22" class="fieldX" style="top: 630px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field23 --&gt;
+            &lt;input id="field23" name="field23" class="fieldX" style="top: 652px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field24 --&gt;
+            &lt;input id="field24" name="field24" class="fieldX" style="top: 674px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field25 --&gt;
+            &lt;input id="field25" name="field25" class="fieldX" style="top: 696px; left: 700px; width: 23px;"&gt;
+            &lt;!-- field26 --&gt;
+            &lt;input id="field26" name="field26" class="fieldX" style="top: 746px; left: 232px; width: 23px;"&gt;
+            &lt;!-- field27 --&gt;
+            &lt;input id="field27" name="field27" class="fieldX" style="top: 770px; left: 232px; width: 23px;"&gt;
+            &lt;!-- field28 --&gt;
+            &lt;input id="field28" name="field28" class="fieldX" style="top: 792px; left: 232px; width: 23px;"&gt;
+            &lt;!-- field29 --&gt;
+            &lt;input id="field29" name="field29" class="fieldX" style="top: 816px; left: 232px; width: 23px;"&gt;
+            &lt;!-- field30 --&gt;
+            &lt;input id="field30" name="field30" class="fieldX" style="top: 838px; left: 232px; width: 23px;"&gt;
+            &lt;!-- field31 --&gt;
+            &lt;input id="field31" name="field31" class="fieldX" style="top: 860px; left: 232px; width: 23px;"&gt;
+            &lt;!-- field32 --&gt;
+            &lt;input id="field32" name="field32" class="fieldX" style="top: 882px; left: 232px; width: 23px;"&gt;
+
+            &lt;!-- field33 --&gt;
+            &lt;input id="field33" name="field33" class="fieldCenter" style="top: 746px; left: 265px; width: 145px;"&gt;
+            &lt;!-- field34 --&gt;
+            &lt;input id="field34" name="field34" class="fieldCenter" style="top: 770px; left: 265px; width: 145px;"&gt;
+            &lt;!-- field35 --&gt;
+            &lt;input id="field35" name="field35" class="fieldCenter" style="top: 792px; left: 265px; width: 145px;"&gt;
+            &lt;!-- field36 --&gt;
+            &lt;input id="field36" name="field36" class="fieldCenter" style="top: 816px; left: 265px; width: 145px;"&gt;
+            &lt;!-- field37 --&gt;
+            &lt;input id="field37" name="field37" class="fieldCenter" style="top: 838px; left: 265px; width: 145px;"&gt;
+            &lt;!-- field38 --&gt;
+            &lt;input id="field38" name="field38" class="fieldCenter" style="top: 860px; left: 265px; width: 145px;"&gt;
+            &lt;!-- field39 --&gt;
+            &lt;input id="field39" name="field39" class="fieldCenter" style="top: 882px; left: 265px; width: 145px;"&gt;
+
+            &lt;!-- field40 --&gt;
+            &lt;input id="field40" name="field40" class="fieldCenter" style="top: 746px; left: 420px; width: 120px;"&gt;
+            &lt;!-- field41 --&gt;
+            &lt;input id="field41" name="field41" class="fieldCenter" style="top: 770px; left: 420px; width: 120px;"&gt;
+            &lt;!-- field42 --&gt;
+            &lt;input id="field42" name="field42" class="fieldCenter" style="top: 792px; left: 420px; width: 120px;"&gt;
+            &lt;!-- field43 --&gt;
+            &lt;input id="field43" name="field43" class="fieldCenter" style="top: 816px; left: 420px; width: 120px;"&gt;
+            &lt;!-- field44 --&gt;
+            &lt;input id="field44" name="field44" class="fieldCenter" style="top: 838px; left: 420px; width: 120px;"&gt;
+            &lt;!-- field45 --&gt;
+            &lt;input id="field45" name="field45" class="fieldCenter" style="top: 860px; left: 420px; width: 120px;"&gt;
+            &lt;!-- field46 --&gt;
+            &lt;input id="field46" name="field46" class="fieldCenter" style="top: 882px; left: 420px; width: 120px;"&gt;
+
+            &lt;!-- field47 --&gt;
+            &lt;input id="field47" name="field47" class="fieldCenter" style="top: 746px; left: 550px; width: 170px;"&gt;
+            &lt;!-- field48 --&gt;
+            &lt;input id="field48" name="field48" class="fieldCenter" style="top: 770px; left: 550px; width: 170px;"&gt;
+            &lt;!-- field49 --&gt;
+            &lt;input id="field49" name="field49" class="fieldCenter" style="top: 792px; left: 550px; width: 170px;"&gt;
+            &lt;!-- field50 --&gt;
+            &lt;input id="field50" name="field50" class="fieldCenter" style="top: 816px; left: 550px; width: 170px;"&gt;
+            &lt;!-- field51 --&gt;
+            &lt;input id="field51" name="field51" class="fieldCenter" style="top: 838px; left: 550px; width: 170px;"&gt;
+            &lt;!-- field52 --&gt;
+            &lt;input id="field52" name="field52" class="fieldCenter" style="top: 860px; left: 550px; width: 170px;"&gt;
+            &lt;!-- field53 --&gt;
+            &lt;input id="field53" name="field53" class="fieldCenter" style="top: 882px; left: 550px; width: 170px;"&gt;
+
+            &lt;textarea id="comments" name="comments" maxlength="220" style="
+        position: absolute;
+        top: 950px;
+        left: 72px;
+        width: 650px;
+        height: 90px;
+        border: 1px solid black;
+        background: rgba(250, 235, 215, 0.5);
+        font-size: 12px;
+        font-weight: normal;
+        line-height: 14px;
+        padding: 4px;
+        resize: none;
+        overflow: hidden;
+        box-sizing: border-box;
+        text-indent: 0;
+    "&gt;&lt;/textarea&gt;
+
+
+
+
+
+        &lt;/div&gt;
+
+    &lt;/div&gt;
+
+    &lt;button class="btn" onclick="generatePDF()"&gt;Generate PDF&lt;/button&gt;
+
+
+    &lt;script&gt;
+        function scaleForm() {
+            const container = document.getElementById('form-container');
+            const wrapper = document.getElementById('form-wrapper');
+
+            const scale = wrapper.clientWidth / 800;
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener('load', scaleForm);
+        window.addEventListener('resize', scaleForm);
+
+        function generatePDF() {
+
+            const data = {
+
+                operator: document.getElementById('operator').value,
+                date: document.getElementById('date').value,
+                size: document.getElementById('size').value,
+                serialNumber: document.getElementById('serialNumber').value,
+                hourStart: document.getElementById('hourStart').value,
+                hourEnd: document.getElementById('hourEnd').value,
+
+                field1: document.getElementById('field1').value,
+                field2: document.getElementById('field2').value,
+                field3: document.getElementById('field3').value,
+                field4: document.getElementById('field4').value,
+                field5: document.getElementById('field5').value,
+                field6: document.getElementById('field6').value,
+                field7: document.getElementById('field7').value,
+                field8: document.getElementById('field8').value,
+                field9: document.getElementById('field9').value,
+                field10: document.getElementById('field10').value,
+                field11: document.getElementById('field11').value,
+                field12: document.getElementById('field12').value,
+                field13: document.getElementById('field13').value,
+                field14: document.getElementById('field14').value,
+                field15: document.getElementById('field15').value,
+                field16: document.getElementById('field16').value,
+                field17: document.getElementById('field17').value,
+                field18: document.getElementById('field18').value,
+                field19: document.getElementById('field19').value,
+                field20: document.getElementById('field20').value,
+                field21: document.getElementById('field21').value,
+                field22: document.getElementById('field22').value,
+                field23: document.getElementById('field23').value,
+                field24: document.getElementById('field24').value,
+                field25: document.getElementById('field25').value,
+                field26: document.getElementById('field26').value,
+                field27: document.getElementById('field27').value,
+                field28: document.getElementById('field28').value,
+                field29: document.getElementById('field29').value,
+                field30: document.getElementById('field30').value,
+                field31: document.getElementById('field31').value,
+                field32: document.getElementById('field32').value,
+                field33: document.getElementById('field33').value,
+                field34: document.getElementById('field34').value,
+                field35: document.getElementById('field35').value,
+                field36: document.getElementById('field36').value,
+                field37: document.getElementById('field37').value,
+                field38: document.getElementById('field38').value,
+                field39: document.getElementById('field39').value,
+                field40: document.getElementById('field40').value,
+                field41: document.getElementById('field41').value,
+                field42: document.getElementById('field42').value,
+                field43: document.getElementById('field43').value,
+                field44: document.getElementById('field44').value,
+                field45: document.getElementById('field45').value,
+                field46: document.getElementById('field46').value,
+                field47: document.getElementById('field47').value,
+                field48: document.getElementById('field48').value,
+                field49: document.getElementById('field49').value,
+                field50: document.getElementById('field50').value,
+                field51: document.getElementById('field51').value,
+                field52: document.getElementById('field52').value,
+                field53: document.getElementById('field53').value,
+                comments: document.getElementById('comments').value,
+            };
+
+            console.log("Sending data:", data);
+
+            fetch(window.location.origin + '/inspection/pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(res =&gt; {
+                    if (!res.ok) throw new Error("Server error");
+                    return res.blob();
+                })
+                .then(blob =&gt; {
+                    const url = window.URL.createObjectURL(blob);
+
+                    // ✅ descarga compatible con celular
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'inspection.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                })
+                .catch(err =&gt; {
+                    console.error("Error:", err);
+                    alert("Error generating PDF");
+                });
+        }
+
+        document.getElementById('form-container').addEventListener('click', function (e) {
+
+            const rect = this.getBoundingClientRect();
+
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            console.log("HTML CLICK → X:", Math.round(x), "Y:", Math.round(y));
+
+        });
+
+        document.addEventListener("DOMContentLoaded", function () {
+
+            const fields = document.querySelectorAll(".fieldX");
+
+            fields.forEach(field =&gt; {
+
+                // evita escribir manualmente
+                field.readOnly = true;
+
+                // cursor tipo botón
+                field.style.cursor = "pointer";
+
+                // click desktop + tap mobile
+                field.addEventListener("click", function () {
+
+                    // toggle X
+                    if (field.value === "X") {
+                        field.value = "";
+                    } else {
+                        field.value = "X";
+                    }
+
+                });
+
+            });
+
+        });
+
+        
+const comments = document.getElementById('comments');
+
+comments.addEventListener('input', function () {
+
+    while (comments.scrollHeight &gt; comments.clientHeight) {
+        comments.value = comments.value.slice(0, -1);
+    }
+
+});
+    &lt;/script&gt;
+
+
+
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+<h2>./public/login.html</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="es"&gt;
+
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;📅 Banglabash WorkFlow - Login&lt;/title&gt;
+    &lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;
+    &lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+    &lt;link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap" rel="stylesheet"&gt;
+    &lt;link rel="stylesheet" href="style.css"&gt;
+    &lt;link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"&gt;
+    &lt;style&gt;
+        .auth-container {
+            max-width: 400px;
+            margin: 4rem auto;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .auth-container h2 {
+            margin-bottom: 1.5rem;
+            color: var(--text-color);
+        }
+
+        .auth-form .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        .auth-form .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .auth-form .form-group input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .auth-form .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .auth-toggle {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .auth-toggle a {
+            color: var(--primary-color);
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .auth-toggle a:hover {
+            color: var(--secondary-color);
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+    &lt;div class="background-blobs"&gt;
+        &lt;div class="blob blob-1"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-2"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-3"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class="container"&gt;
+        &lt;header&gt;
+            &lt;h1&gt;&lt;i class="fa-solid fa-clock"&gt;&lt;/i&gt;Banglabash WorkFlow&lt;/h1&gt;
+            &lt;p&gt;Manage your Time&lt;/p&gt;
+        &lt;/header&gt;
+
+        &lt;main&gt;
+            &lt;section class="auth-container card glass"&gt;
+                &lt;h2 id="auth-title"&gt;Login&lt;/h2&gt;
+                &lt;form id="auth-form" class="auth-form"&gt;
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="username"&gt;Username&lt;/label&gt;
+                        &lt;input type="text" id="username" required autocomplete="username"&gt;
+                    &lt;/div&gt;
+                    &lt;div class="form-group"&gt;
+                        &lt;label for="password"&gt;Password&lt;/label&gt;
+                        &lt;input type="password" id="password" required autocomplete="current-password"&gt;
+                    &lt;/div&gt;
+                    &lt;button type="submit" class="btn-primary" id="auth-submit"&gt;
+                        &lt;i class="fa-solid fa-sign-in-alt"&gt;&lt;/i&gt; Login
+                    &lt;/button&gt;
+                    &lt;div id="auth-error" class="error-msg" style="margin-top: 1rem;"&gt;&lt;/div&gt;
+                &lt;/form&gt;
+                &lt;div class="auth-toggle"&gt;
+                    &lt;span id="auth-toggle-text"&gt;Don't have an account?&lt;/span&gt;
+                    &lt;a id="auth-toggle-link"&gt;Sign Up&lt;/a&gt;
+                &lt;/div&gt;
+            &lt;/section&gt;
+        &lt;/main&gt;
+    &lt;/div&gt;
+
+    &lt;script src="login.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+<h2>./public/login.js</h2>
+<pre>document.addEventListener('DOMContentLoaded', () =&gt; {
+    const authForm = document.getElementById('auth-form');
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const authTitle = document.getElementById('auth-title');
+    const authSubmit = document.getElementById('auth-submit');
+    const authToggleText = document.getElementById('auth-toggle-text');
+    const authToggleLink = document.getElementById('auth-toggle-link');
+    const authError = document.getElementById('auth-error');
+
+    let isLogin = true;
+
+    // Check if user is already logged in
+    const token = localStorage.getItem('token');
+    const role = localStorage.getItem('role');
+    if (token) {
+        if (role === 'admin') {
+            window.location.href = 'admin.html';
+        } else {
+            window.location.href = 'menu.html';
+        }
+    }
+
+    authToggleLink.addEventListener('click', () =&gt; {
+        isLogin = !isLogin;
+        authTitle.textContent = isLogin ? 'Login' : 'Registration';
+        authSubmit.innerHTML = isLogin ? '&lt;i class="fa-solid fa-sign-in-alt"&gt;&lt;/i&gt; Login' : '&lt;i class="fa-solid fa-user-plus"&gt;&lt;/i&gt; Sign Up';
+        authToggleText.textContent = isLogin ? 'Don\'t have an account?' : 'Already have an account?';
+        authToggleLink.textContent = isLogin ? 'Sign Up' : 'Login';
+        authError.textContent = '';
+    });
+
+    authForm.addEventListener('submit', async (e) =&gt; {
+        e.preventDefault();
+        authError.textContent = '';
+
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        if (!username || !password) {
+            showError('Please enter username and password');
+            return;
+        }
+
+        const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                if (isLogin) {
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', username);
+                    if (data.role) {
+                        localStorage.setItem('role', data.role);
+                    } else {
+                        localStorage.setItem('role', 'user');
+                    }
+
+                    if (data.role === 'admin') {
+                        window.location.href = 'admin.html';
+                    } else {
+                        window.location.href = 'menu.html';
+                    }
+                } else {
+                    // Registration successful, auto-login or switch to login
+                    isLogin = true;
+                    authTitle.textContent = 'Login';
+                    authSubmit.innerHTML = '&lt;i class="fa-solid fa-sign-in-alt"&gt;&lt;/i&gt; Login';
+                    authToggleText.textContent = 'Don\'t have an account?';
+                    authToggleLink.textContent = 'Sign Up';
+                    usernameInput.value = '';
+                    passwordInput.value = '';
+                    showError('Registration successful. Please log in.', 'success');
+                }
+            } else {
+                showError(data.message || 'Authentication error');
+            }
+        } catch (error) {
+            console.error('Auth error:', error);
+            showError('Connection error with the server');
+        }
+    });
+
+    function showError(msg, type = 'error') {
+        authError.textContent = msg;
+        authError.style.color = type === 'error' ? 'var(--danger-color)' : 'var(--success-color, #10b981)';
+        setTimeout(() =&gt; {
+            authError.textContent = '';
+        }, 4000);
+    }
+});
+</pre>
+<h2>./public/menu.html</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;📋 Banglabash WorkFlow&lt;/title&gt;
+
+    &lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;
+    &lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+
+    &lt;link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap" rel="stylesheet"&gt;
+
+    &lt;link rel="stylesheet" href="style.css"&gt;
+
+    &lt;link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"&gt;
+
+    &lt;style&gt;
+        .menu-grid {
+            margin-top: 3rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .menu-card {
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .menu-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 1rem;
+            }
+
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            .user-actions {
+                width: 100%;
+            }
+
+            .user-actions button {
+                width: 100%;
+            }
+
+            .menu-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+                margin-top: 1.5rem;
+            }
+
+            .menu-card {
+                padding: 1.5rem;
+            }
+
+            .menu-icon {
+                font-size: 3rem;
+            }
+
+            .menu-card h2 {
+                font-size: 1.4rem;
+            }
+
+            .menu-card p {
+                font-size: 0.95rem;
+            }
+
+            .menu-card button {
+                width: 100%;
+            }
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div class="background-blobs"&gt;
+        &lt;div class="blob blob-1"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-2"&gt;&lt;/div&gt;
+        &lt;div class="blob blob-3"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class="container"&gt;
+
+        &lt;header style="display:flex; justify-content:space-between; align-items:center; width:100%;"&gt;
+
+            &lt;div&gt;
+                &lt;h1&gt;
+                    &lt;i class="fa-solid fa-layer-group"&gt;&lt;/i&gt;
+                    Banglabash WorkFlow
+                &lt;/h1&gt;
+
+                &lt;p&gt;Select an option&lt;/p&gt;
+            &lt;/div&gt;
+
+            &lt;div class="user-actions" style="display:flex; gap:1rem;"&gt;
+
+                &lt;button id="btn-logout" class="btn-primary" style="background: var(--danger-color, #ef4444);
+                           border-color: var(--danger-color, #ef4444);
+                           font-size: 0.9rem;
+                           padding: 0.5rem 1rem;"&gt;
+
+                    &lt;i class="fa-solid fa-sign-out-alt"&gt;&lt;/i&gt;
+                    Logout
+                &lt;/button&gt;
+
+            &lt;/div&gt;
+
+        &lt;/header&gt;
+
+        &lt;main&gt;
+
+            &lt;section class="menu-grid"&gt;
+
+    &lt;div class="card glass menu-card" onclick="window.location.href='index.html'"&gt;
+        &lt;div class="menu-icon"&gt;
+            &lt;i class="fa-solid fa-clock"&gt;&lt;/i&gt;
+        &lt;/div&gt;
+
+        &lt;h2&gt;Hours&lt;/h2&gt;
+        &lt;p&gt;Manage work and practicum hours&lt;/p&gt;
+
+        &lt;button class="btn-primary" style="margin-top:1rem;"&gt;
+            Open Hours
+        &lt;/button&gt;
+    &lt;/div&gt;
+
+    &lt;div class="card glass menu-card" onclick="window.location.href='/inspection'"&gt;
+        &lt;div class="menu-icon"&gt;
+            &lt;i class="fa-solid fa-clipboard-check"&gt;&lt;/i&gt;
+        &lt;/div&gt;
+
+        &lt;h2&gt;Inspection Form&lt;/h2&gt;
+        &lt;p&gt;Open equipment inspection sheet&lt;/p&gt;
+
+        &lt;button class="btn-primary" style="margin-top:1rem;"&gt;
+            Open Inspection
+        &lt;/button&gt;
+
+        
+    &lt;/div&gt;
+
+    &lt;div class="card glass menu-card" onclick="window.location.href='summary.html'"&gt;
+        &lt;div class="menu-icon"&gt;
+            &lt;i class="fa-solid fa-business-time"&gt;&lt;/i&gt;
+        &lt;/div&gt;
+
+        &lt;h2&gt;Summary Work Hours&lt;/h2&gt;
+        &lt;p&gt;View your work hours summary&lt;/p&gt;
+
+        &lt;button class="btn-primary" style="margin-top:1rem;"&gt;
+            Open Summary
+        &lt;/button&gt;
+
+        
+    &lt;/div&gt;
+
+&lt;/section&gt;
+
+        &lt;/main&gt;
+
+    &lt;/div&gt;
+
+    &lt;script&gt;
+
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        document.getElementById('btn-logout')
+            .addEventListener('click', () =&gt; {
+
+                localStorage.removeItem('token');
+                localStorage.removeItem('username');
+                localStorage.removeItem('role');
+
+                window.location.href = 'login.html';
+
+            });
+
+    &lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+<h2>./public/script.js</h2>
+<pre>document.addEventListener('DOMContentLoaded', () =&gt; {
+    const workForm = document.getElementById('work-form');
+    const entriesList = document.getElementById('entries-list');
+    const totalTodayEl = document.getElementById('total-today');
+    const totalWeekEl = document.getElementById('total-week');
+    const formError = document.getElementById('form-error');
+    const submitBtn = workForm.querySelector('button[type="submit"]');
+
+    let editingId = null;
+    let allEntries = [];
+    let currentTab = 'work';
+
+    const tabWork = document.getElementById('tab-work');
+    const tabPracticum = document.getElementById('tab-practicum');
+
+    if (tabWork &amp;&amp; tabPracticum) {
+        tabWork.addEventListener('click', () =&gt; {
+            currentTab = 'work';
+            tabWork.classList.add('active');
+            tabWork.style.background = 'var(--primary-color)';
+            tabWork.style.color = 'white';
+            tabPracticum.classList.remove('active');
+            tabPracticum.style.background = 'transparent';
+            tabPracticum.style.color = 'var(--text-muted)';
+            renderEntries(allEntries);
+            updateDashboard(allEntries);
+        });
+
+        tabPracticum.addEventListener('click', () =&gt; {
+            currentTab = 'practicum';
+            tabPracticum.classList.add('active');
+            tabPracticum.style.background = 'var(--primary-color)';
+            tabPracticum.style.color = 'white';
+            tabWork.classList.remove('active');
+            tabWork.style.background = 'transparent';
+            tabWork.style.color = 'var(--text-muted)';
+            renderEntries(allEntries);
+            updateDashboard(allEntries);
+        });
+    }
+
+    const radioWork = document.querySelector('input[value="work"]');
+    const radioPracticum = document.querySelector('input[value="practicum"]');
+    const cardWork = document.getElementById('card-work');
+    const cardPracticum = document.getElementById('card-practicum');
+
+    if (radioWork &amp;&amp; radioPracticum) {
+        document.querySelectorAll('input[name="recordType"]').forEach(radio =&gt; {
+            radio.addEventListener('change', (e) =&gt; {
+                if (e.target.value === 'work') {
+                    cardWork.style.borderColor = 'var(--primary-color)';
+                    cardPracticum.style.borderColor = 'transparent';
+                } else {
+                    cardPracticum.style.borderColor = 'var(--primary-color)';
+                    cardWork.style.borderColor = 'transparent';
+                }
+            });
+        });
+    }
+
+    const dayOffToggle = document.getElementById('day-off-toggle');
+    const startTimeInput = document.getElementById('start-time');
+    const endTimeInput = document.getElementById('end-time');
+    const descInput = document.getElementById('description');
+
+    if (dayOffToggle) {
+        dayOffToggle.addEventListener('change', (e) =&gt; {
+            if (e.target.checked) {
+                startTimeInput.value = '00:00';
+                endTimeInput.value = '00:00';
+                descInput.value = 'Day Off';
+                startTimeInput.disabled = true;
+                endTimeInput.disabled = true;
+            } else {
+                startTimeInput.value = '';
+                endTimeInput.value = '';
+                descInput.value = 'CornerStone';
+                startTimeInput.disabled = false;
+                endTimeInput.disabled = false;
+            }
+        });
+    }
+
+    // Check for token before anything else
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+    };
+
+    // Logout logic
+    document.getElementById('btn-logout').addEventListener('click', () =&gt; {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+    });
+
+    // Password modal logic
+    const modal = document.getElementById('password-modal');
+    document.getElementById('btn-change-password').addEventListener('click', () =&gt; {
+        modal.style.display = 'flex';
+    });
+
+    document.getElementById('close-modal').addEventListener('click', () =&gt; {
+        modal.style.display = 'none';
+        document.getElementById('password-form').reset();
+        document.getElementById('password-error').textContent = '';
+    });
+
+    document.getElementById('password-form').addEventListener('submit', async (e) =&gt; {
+        e.preventDefault();
+        const oldPassword = document.getElementById('old-password').value;
+        const newPassword = document.getElementById('new-password').value;
+        const errEl = document.getElementById('password-error');
+
+        try {
+            const res = await fetch('/api/auth/password', {
+                method: 'PUT',
+                headers: authHeaders,
+                body: JSON.stringify({ oldPassword, newPassword })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                errEl.style.color = '#10b981';
+                errEl.textContent = 'Password updated!';
+                setTimeout(() =&gt; {
+                    modal.style.display = 'none';
+                    document.getElementById('password-form').reset();
+                    errEl.textContent = '';
+                }, 2000);
+            } else {
+                errEl.style.color = '#ef4444';
+                errEl.textContent = data.message || 'Error updating password';
+            }
+        } catch (e) {
+            errEl.style.color = '#ef4444';
+            errEl.textContent = 'Connection error';
+        }
+    });
+
+    // Admin check
+    const role = localStorage.getItem('role') || 'user';
+    if (role === 'admin') {
+        const adminBtn = document.getElementById('btn-admin-panel');
+        if (adminBtn) {
+            adminBtn.style.display = 'block';
+            adminBtn.addEventListener('click', () =&gt; {
+                window.location.href = 'admin.html';
+            });
+        }
+    }
+
+    // Set default date to today
+    resetForm();
+
+    // Fetch and display entries on load
+    fetchEntries();
+
+    workForm.addEventListener('submit', async (e) =&gt; {
+        e.preventDefault();
+        formError.textContent = '';
+
+        const date = document.getElementById('date').value;
+        const startTime = document.getElementById('start-time').value;
+        const endTime = document.getElementById('end-time').value;
+        const description = document.getElementById('description').value;
+        const recordType = document.querySelector('input[name="recordType"]:checked').value;
+
+        const isDayOff = document.getElementById('day-off-toggle') ? document.getElementById('day-off-toggle').checked : false;
+
+        if (!date || !startTime || !endTime) {
+            showError('Por favor completa todos los campos requeridos');
+            return;
+        }
+
+        if (!isDayOff &amp;&amp; startTime &gt;= endTime) {
+            showError('La hora de fin debe ser posterior a la de inicio');
+            return;
+        }
+
+        const entryData = { date, startTime, endTime, description, recordType };
+
+        try {
+            let response;
+            if (editingId) {
+                response = await fetch(`/api/hours/${editingId}`, {
+                    method: 'PUT',
+                    headers: authHeaders,
+                    body: JSON.stringify(entryData)
+                });
+            } else {
+                response = await fetch('/api/hours', {
+                    method: 'POST',
+                    headers: authHeaders,
+                    body: JSON.stringify(entryData)
+                });
+            }
+
+            if (response.ok) {
+                resetForm();
+                fetchEntries();
+            } else {
+                showError('Error al guardar la entrada');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showError('Error de conexión con el servidor');
+        }
+    });
+
+    async function fetchEntries() {
+        try {
+            const response = await fetch('/api/hours', { headers: authHeaders });
+            if (response.status === 401) {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+                return;
+            }
+            const entries = await response.json();
+            allEntries = entries;
+            renderEntries(entries);
+            updateDashboard(entries);
+        } catch (error) {
+            console.error('Error fetching entries:', error);
+            entriesList.innerHTML = '&lt;p class="error-msg"&gt;Error al cargar los datos&lt;/p&gt;';
+        }
+    }
+
+    function renderEntries(entries) {
+        entriesList.innerHTML = '';
+
+        const filteredEntries = entries.filter(e =&gt; (e.recordType || 'work') === currentTab);
+
+        if (filteredEntries.length === 0) {
+            entriesList.innerHTML = `
+                &lt;div class="empty-state"&gt;
+                    &lt;i class="fa-regular fa-calendar-xmark"&gt;&lt;/i&gt;
+                    &lt;p&gt;No hay registros aún&lt;/p&gt;
+                &lt;/div&gt;`;
+            return;
+        }
+
+        // Sort entries by date desc, then by start time desc
+        filteredEntries.sort((a, b) =&gt; {
+            const dateA = new Date(`${a.date}T${a.startTime}`);
+            const dateB = new Date(`${b.date}T${b.startTime}`);
+            return dateB - dateA;
+        });
+
+        const weeks = {};
+
+        filteredEntries.forEach(entry =&gt; {
+            const date = new Date(entry.date + 'T00:00:00');
+            const weekStart = getStartOfWeek(date);
+            const weekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+
+            if (!weeks[weekKey]) {
+                weeks[weekKey] = {
+                    start: weekStart,
+                    entries: [],
+                    totalMinutes: 0
+                };
+            }
+
+            const duration = calculateDuration(entry.startTime, entry.endTime);
+            weeks[weekKey].entries.push(entry);
+            weeks[weekKey].totalMinutes += duration;
+        });
+
+        // Sort weeks desc
+        const sortedWeeks = Object.keys(weeks).sort((a, b) =&gt; new Date(b) - new Date(a));
+
+        sortedWeeks.forEach(weekKey =&gt; {
+            const week = weeks[weekKey];
+            const weekCard = document.createElement('div');
+            weekCard.className = 'week-card glass'; // Reuse glass effect but specific class
+
+            const weekEnd = new Date(week.start);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+
+            const dateRange = `${formatDateShort(week.start)} - ${formatDateShort(weekEnd)}`;
+
+            let entriesHtml = '';
+            week.entries.forEach(entry =&gt; {
+                const duration = calculateDuration(entry.startTime, entry.endTime);
+                entriesHtml += `
+                    &lt;div class="day-row"&gt;
+                        &lt;div class="day-info"&gt;
+                            &lt;span class="day-date"&gt;${formatDate(entry.date)}&lt;/span&gt;
+                            &lt;span class="day-time"&gt;${entry.startTime} - ${entry.endTime}&lt;/span&gt;
+                            &lt;span class="day-desc"&gt;${entry.description || ''}&lt;/span&gt;
+                        &lt;/div&gt;
+                        &lt;div class="day-actions"&gt;
+                            &lt;span class="duration-pill"&gt;${formatDuration(duration)}&lt;/span&gt;
+                            &lt;button class="btn-edit-mini" onclick="editEntry('${entry.id}', '${entry.date}', '${entry.startTime}', '${entry.endTime}', '${escapeHtml(entry.description || '')}', '${entry.recordType || 'work'}')" title="Editar"&gt;
+                                &lt;i class="fa-solid fa-pen"&gt;&lt;/i&gt;
+                            &lt;/button&gt;
+                            &lt;button class="btn-delete-mini" onclick="deleteEntry('${entry.id}')" title="Eliminar"&gt;
+                                &lt;i class="fa-solid fa-trash"&gt;&lt;/i&gt;
+                            &lt;/button&gt;
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+                `;
+            });
+
+            weekCard.innerHTML = `
+                &lt;div class="week-header"&gt;
+                    &lt;h3&gt;Week: ${dateRange}&lt;/h3&gt;
+                    &lt;div style="display: flex; gap: 1rem; align-items: center;"&gt;
+                        &lt;span class="week-total"&gt;${formatDuration(week.totalMinutes)}&lt;/span&gt;
+                        &lt;button class="btn-copy-mini" onclick="copyWeekToClipboard('${weekKey}')" title="Copiar tabla para correo"&gt;
+                            &lt;i class="fa-solid fa-copy"&gt;&lt;/i&gt;
+                        &lt;/button&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+                &lt;div class="week-entries"&gt;
+                    ${entriesHtml}
+                &lt;/div&gt;
+            `;
+
+            entriesList.appendChild(weekCard);
+        });
+    }
+
+    function getStartOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    function formatDateShort(date) {
+        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    }
+
+    window.deleteEntry = async (id) =&gt; {
+        if (!confirm('¿Estás seguro de eliminar esta entrada?')) return;
+
+        try {
+            const response = await fetch(`/api/hours/${id}`, {
+                method: 'DELETE',
+                headers: authHeaders
+            });
+            if (response.ok) {
+                fetchEntries();
+            } else {
+                alert('Error al eliminar la entrada');
+            }
+        } catch (error) {
+            console.error('Error deleting entry:', error);
+        }
+    };
+
+    window.editEntry = (id, date, start, end, desc, recordType) =&gt; {
+        editingId = id;
+        document.getElementById('date').value = date;
+        document.getElementById('start-time').value = start;
+        document.getElementById('end-time').value = end;
+        document.getElementById('description').value = desc;
+
+        const type = recordType || 'work';
+        const radio = document.querySelector(`input[name="recordType"][value="${type}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change'));
+        }
+
+        const toggle = document.getElementById('day-off-toggle');
+        if (toggle) {
+            if (desc === 'Day Off' &amp;&amp; start === '00:00' &amp;&amp; end === '00:00') {
+                toggle.checked = true;
+                document.getElementById('start-time').disabled = true;
+                document.getElementById('end-time').disabled = true;
+            } else {
+                toggle.checked = false;
+                document.getElementById('start-time').disabled = false;
+                document.getElementById('end-time').disabled = false;
+            }
+        }
+
+        submitBtn.innerHTML = '&lt;i class="fa-solid fa-save"&gt;&lt;/i&gt; Update';
+        submitBtn.classList.add('btn-update');
+
+        // Add cancel button if not exists
+        if (!document.getElementById('btn-cancel')) {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.id = 'btn-cancel';
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn-secondary';
+            cancelBtn.innerHTML = '&lt;i class="fa-solid fa-times"&gt;&lt;/i&gt; Cancel';
+            cancelBtn.onclick = resetForm;
+            workForm.appendChild(cancelBtn);
+        }
+
+        document.querySelector('.input-section').scrollIntoView({ behavior: 'smooth' });
+    };
+
+    function resetForm() {
+        workForm.reset();
+        const d = new Date();
+        document.getElementById('date').value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        document.getElementById('description').value = 'CornerStone';
+        
+        const radio = document.querySelector(`input[name="recordType"][value="${currentTab}"]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event('change'));
+        }
+        
+        const toggle = document.getElementById('day-off-toggle');
+        if (toggle) {
+            toggle.checked = false;
+            document.getElementById('start-time').disabled = false;
+            document.getElementById('end-time').disabled = false;
+        }
+
+        editingId = null;
+        submitBtn.innerHTML = '&lt;i class="fa-solid fa-plus"&gt;&lt;/i&gt; Add';
+        submitBtn.classList.remove('btn-update');
+
+        const cancelBtn = document.getElementById('btn-cancel');
+        if (cancelBtn) cancelBtn.remove();
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&amp;/g, "&amp;amp;")
+            .replace(/&lt;/g, "&amp;lt;")
+            .replace(/&gt;/g, "&amp;gt;")
+            .replace(/"/g, "&amp;quot;")
+            .replace(/'/g, "&amp;#039;");
+    }
+
+    function updateDashboard(entries) {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        let todayMinutes = 0;
+        let weekMinutes = 0;
+
+        const startOfWeek = getStartOfWeek(now);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(endOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        const filteredEntries = entries.filter(e =&gt; (e.recordType || 'work') === currentTab);
+
+        filteredEntries.forEach(entry =&gt; {
+            const duration = calculateDuration(entry.startTime, entry.endTime);
+
+            // Daily total
+            if (entry.date === today) {
+                todayMinutes += duration;
+            }
+
+            // Weekly total
+            const entryDate = new Date(entry.date + 'T00:00:00');
+            if (entryDate &gt;= startOfWeek &amp;&amp; entryDate &lt;= endOfWeek) {
+                weekMinutes += duration;
+            }
+        });
+
+        totalTodayEl.textContent = formatDuration(todayMinutes);
+        totalWeekEl.textContent = formatDuration(weekMinutes);
+    }
+
+    function calculateDuration(start, end) {
+        const [startH, startM] = start.split(':').map(Number);
+        const [endH, endM] = end.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        return endMinutes - startMinutes;
+    }
+
+    function formatDuration(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${h}h ${m}m`;
+    }
+
+    function formatDate(dateString) {
+        const options = { weekday: 'short', day: 'numeric', month: 'short' };
+        // Validar y prevenir problemas de timezone agregando T00:00:00
+        const date = new Date(`${dateString}T00:00:00`);
+        return date.toLocaleDateString('en-US', options);
+    }
+
+    function showError(msg) {
+        formError.textContent = msg;
+        setTimeout(() =&gt; {
+            formError.textContent = '';
+        }, 3000);
+    }
+
+    function formatTimeAMPM(time24) {
+        const [hour, minute] = time24.split(':');
+        let h = parseInt(hour, 10);
+        const ampm = h &gt;= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${minute} ${ampm}`;
+    }
+
+    window.copyWeekToClipboard = async (weekKey) =&gt; {
+        try {
+            const sortedEntries = [...allEntries]
+                .filter(e =&gt; (e.recordType || 'work') === currentTab)
+                .sort((a, b) =&gt; {
+                    const dateA = new Date(`${a.date}T${a.startTime}`);
+                    const dateB = new Date(`${b.date}T${b.startTime}`);
+                    return dateA - dateB;
+                });
+
+            let weekEntries = [];
+            let totalMinutes = 0;
+
+            sortedEntries.forEach(entry =&gt; {
+                const date = new Date(entry.date + 'T00:00:00');
+                const weekStart = getStartOfWeek(date);
+                const currentWeekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+
+                if (currentWeekKey === weekKey) {
+                    weekEntries.push(entry);
+                    totalMinutes += calculateDuration(entry.startTime, entry.endTime);
+                }
+            });
+
+            if (weekEntries.length === 0) return;
+
+            const weekStart = new Date(weekEntries[0].date + 'T00:00:00');
+            const weekStartObj = getStartOfWeek(weekStart);
+            const weekEndObj = new Date(weekStartObj);
+            weekEndObj.setDate(weekEndObj.getDate() + 6);
+            const dateRange = `${formatDateShort(weekStartObj)} - ${formatDateShort(weekEndObj)}`;
+
+            let textContent = `Hello, This is my TimeSheet :\n\n`;
+            textContent += `Hours Report: ${dateRange}\n\n`;
+            textContent += `Date\tStart\tEnd\tDescription\tDuration\n`;
+            textContent += `----------------------------------------------------------\n`;
+
+            let htmlContent = `
+                &lt;div style="font-family: Arial, sans-serif; color: #333;"&gt;
+                    &lt;p style="font-size: 16px; margin-bottom: 20px;"&gt;Hello, This is my TimeSheet:&lt;/p&gt;
+                    &lt;h2 style="color: #4f46e5;"&gt;Hours Report: ${dateRange}&lt;/h2&gt;
+                    &lt;table style="border-collapse: collapse; width: 100%; max-width: 800px; text-align: left;"&gt;
+                        &lt;thead&gt;
+                            &lt;tr style="background-color: #f3f4f6; color: #111;"&gt;
+                                &lt;th style="padding: 10px; border: 1px solid #d1d5db;"&gt;Date&lt;/th&gt;
+                                &lt;th style="padding: 10px; border: 1px solid #d1d5db;"&gt;Start&lt;/th&gt;
+                                &lt;th style="padding: 10px; border: 1px solid #d1d5db;"&gt;End&lt;/th&gt;
+                                &lt;th style="padding: 10px; border: 1px solid #d1d5db;"&gt;Description&lt;/th&gt;
+                                &lt;th style="padding: 10px; border: 1px solid #d1d5db;"&gt;Duration&lt;/th&gt;
+                            &lt;/tr&gt;
+                        &lt;/thead&gt;
+                        &lt;tbody&gt;
+            `;
+
+            weekEntries.forEach(entry =&gt; {
+                const duration = calculateDuration(entry.startTime, entry.endTime);
+                const durationStr = formatDuration(duration);
+                // We use en-US format to make the output match English convention
+                const entryDateObj = new Date(`${entry.date}T00:00:00`);
+                const dateStr = entryDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+                const startTime12 = formatTimeAMPM(entry.startTime);
+                const endTime12 = formatTimeAMPM(entry.endTime);
+                const descStr = entry.description || '';
+
+                textContent += `${dateStr}\t${startTime12}\t${endTime12}\t${descStr}\t${durationStr}\n`;
+
+                htmlContent += `
+                    &lt;tr&gt;
+                        &lt;td style="padding: 10px; border: 1px solid #d1d5db;"&gt;${dateStr}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border: 1px solid #d1d5db;"&gt;${startTime12}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border: 1px solid #d1d5db;"&gt;${endTime12}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border: 1px solid #d1d5db;"&gt;${escapeHtml(descStr)}&lt;/td&gt;
+                        &lt;td style="padding: 10px; border: 1px solid #d1d5db;"&gt;${durationStr}&lt;/td&gt;
+                    &lt;/tr&gt;
+                `;
+            });
+
+            const totalDecimalHours = Number((totalMinutes / 60).toFixed(2)) + ' hours';
+
+            textContent += `----------------------------------------------------------\n`;
+            textContent += `Total weekly hours:\t\t\t\t${totalDecimalHours}\n`;
+
+            htmlContent += `
+                            &lt;tr style="background-color: #e5e7eb; font-weight: bold;"&gt;
+                                &lt;td colspan="4" style="padding: 10px; border: 1px solid #d1d5db; text-align: right;"&gt;Total weekly hours:&lt;/td&gt;
+                                &lt;td style="padding: 10px; border: 1px solid #d1d5db;"&gt;${totalDecimalHours}&lt;/td&gt;
+                            &lt;/tr&gt;
+                        &lt;/tbody&gt;
+                    &lt;/table&gt;
+                &lt;/div&gt;
+            `;
+
+            if (navigator.clipboard &amp;&amp; window.ClipboardItem) {
+                const textBlob = new Blob([textContent], { type: 'text/plain' });
+                const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+                const clipboardItem = new ClipboardItem({
+                    'text/plain': textBlob,
+                    'text/html': htmlBlob
+                });
+                await navigator.clipboard.write([clipboardItem]);
+            } else {
+                await navigator.clipboard.writeText(textContent);
+            }
+
+            const btn = document.querySelector(`button[onclick="copyWeekToClipboard('${weekKey}')"]`);
+            if (btn) {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '&lt;i class="fa-solid fa-check"&gt;&lt;/i&gt; Copiado';
+                btn.style.background = '#10b981';
+                btn.style.borderColor = '#10b981';
+                btn.style.color = '#fff';
+                setTimeout(() =&gt; {
+                    btn.innerHTML = originalHtml;
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            }
+
+        } catch (error) {
+            console.error('Error copying to clipboard:', error);
+            alert('Error al copiar al portapapeles. Asegúrate de tener permisos o estar en un entorno seguro.');
+        }
+    };
+});
+</pre>
+<h2>./public/style.css</h2>
+<pre>:root {
+    --bg-color: #0f172a;
+    --text-color: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary-color: #6366f1;
+    --primary-hover: #4f46e5;
+    --accent-color: #38bdf8;
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --danger-color: #ef4444;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    min-height: 100vh;
+    overflow-x: hidden;
+    line-height: 1.6;
+}
+
+/* Background Blobs */
+.background-blobs {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    overflow: hidden;
+}
+
+.blob {
+    position: absolute;
+    filter: blur(80px);
+    opacity: 0.4;
+    border-radius: 50%;
+    animation: float 20s infinite ease-in-out;
+}
+
+.blob-1 {
+    top: -10%;
+    left: -10%;
+    width: 500px;
+    height: 500px;
+    background: var(--primary-color);
+    animation-delay: 0s;
+}
+
+.blob-2 {
+    bottom: -10%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    background: var(--accent-color);
+    animation-delay: -5s;
+}
+
+.blob-3 {
+    top: 40%;
+    left: 40%;
+    width: 300px;
+    height: 300px;
+    background: #a855f7;
+    animation-delay: -10s;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    33% {
+        transform: translate(30px, -50px) scale(1.1);
+    }
+
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 3rem;
+    animation: fadeInDown 0.8s ease-out;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+header p {
+    color: var(--text-muted);
+}
+
+/* Glassmorphism Components */
+.glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.glass:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Dashboard */
+.dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    animation: fadeInUp 0.8s ease-out 0.2s backwards;
+}
+
+.dashboard .card {
+    text-align: center;
+}
+
+.dashboard h3 {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.dashboard .stat {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent-color);
+}
+
+/* Form */
+.input-section {
+    margin-bottom: 2rem;
+    animation: fadeInUp 0.8s ease-out 0.4s backwards;
+}
+
+.input-section h2 {
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: white;
+    font-family: inherit;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+/* Customizing date/time inputs for webkit */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+.btn-primary {
+    width: 100%;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.error-msg {
+    color: var(--danger-color);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    height: 1.2rem;
+}
+
+/* Entries List */
+.entries-section {
+    animation: fadeInUp 0.8s ease-out 0.6s backwards;
+}
+
+.entries-section h2 {
+    margin-bottom: 1.5rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-muted);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.entry-card {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.entry-card:hover {
+    background: rgba(15, 23, 42, 0.6);
+    transform: translateX(4px);
+}
+
+.entry-info h4 {
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+}
+
+.entry-info .meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.entry-info .meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.duration-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent-color);
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.btn-delete {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.5rem;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.btn-delete:hover {
+    color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 1rem;
+    }
+
+    .form-row,
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+
+    .entry-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .entry-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+/* Weekly View Styles */
+.week-card {
+    margin-bottom: 2rem;
+    padding: 0;
+    /* Override default glass padding if needed, or keep it */
+    overflow: hidden;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.week-header {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.week-header h3 {
+    font-size: 1.1rem;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.week-total {
+    background: var(--primary-color);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.week-entries {
+    padding: 1rem;
+}
+
+.day-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background-color 0.2s;
+}
+
+.day-row:last-child {
+    border-bottom: none;
+}
+
+.day-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+}
+
+.day-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.day-date {
+    font-weight: 600;
+    color: var(--accent-color);
+    font-size: 0.95rem;
+}
+
+.day-time {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.day-desc {
+    font-size: 0.9rem;
+    font-style: italic;
+    color: var(--text-color);
+}
+
+.day-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.duration-pill {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+}
+
+.btn-delete-mini {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+}
+
+.btn-delete-mini:hover {
+    opacity: 1;
+    color: var(--danger-color);
+}
+
+@media (min-width: 600px) {
+    .day-info {
+        flex-direction: row;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .day-desc {
+        border-left: 2px solid var(--glass-border);
+        padding-left: 1rem;
+    }
+}
+
+/* Edit Logic Styles */
+.btn-edit-mini {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+    margin-right: 0.5rem;
+}
+
+.btn-edit-mini:hover {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+.btn-copy-mini {
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid var(--primary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.btn-copy-mini:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.btn-update {
+    background: linear-gradient(135deg, var(--accent-color), #0ea5e9);
+    box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4);
+}
+
+.btn-secondary {
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.875rem;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
+}
+
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--text-muted);
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--primary-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+    background-color: white;
+}
+
+.slider.round {
+    border-radius: 24px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}</pre>
+<h2>./public/summary.html</h2>
+<pre>&lt;!-- summary.html --&gt;
+&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
+    &lt;title&gt;📅 Hours Summary&lt;/title&gt;
+
+        &lt;link rel="icon" type="image/png" href="/images/Summary.png"&gt;
+
+
+    &lt;!-- Font Awesome --&gt;
+    &lt;link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"&gt;
+
+    &lt;!-- Bootstrap --&gt;
+    &lt;link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"&gt;
+
+    &lt;style&gt;
+        body {
+            background: #f4f6f9;
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 20px;
+        }
+
+        .summary-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .title-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .title-area i {
+            font-size: 30px;
+            color: #0d6efd;
+        }
+
+        .filters {
+            background: #eef3ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+
+        .table thead {
+            background: #0d6efd;
+            color: white;
+        }
+
+        .hours-badge {
+            background: #198754;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .btn-menu {
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 0;
+            }
+
+            .summary-card {
+                padding: 15px;
+                border-radius: 10px;
+            }
+
+            .title-area {
+                align-items: flex-start;
+            }
+
+            .title-area i {
+                font-size: 26px;
+            }
+
+            .title-area h2 {
+                font-size: 22px;
+            }
+
+            .filters {
+                padding: 12px;
+            }
+
+            .filters .col-md-3 {
+                width: 100%;
+            }
+
+            .filters label {
+                font-weight: bold;
+                margin-bottom: 6px;
+            }
+
+            .filters select,
+            .filters input,
+            .filters button {
+                width: 100%;
+                min-height: 44px;
+                font-size: 16px;
+            }
+
+            .table-responsive {
+                overflow-x: auto;
+            }
+
+            table {
+                min-width: 520px;
+                font-size: 14px;
+            }
+
+            .hours-badge {
+                display: inline-block;
+                white-space: nowrap;
+            }
+
+            .modal-dialog {
+                margin: 10px;
+            }
+
+            .modal-body {
+                overflow-x: auto;
+            }
+
+            .modal-body table {
+                min-width: 650px;
+                font-size: 14px;
+            }
+
+            .btn-menu {
+                width: 100%;
+                min-height: 44px;
+            }
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div class="container"&gt;
+
+        &lt;div class="summary-card"&gt;
+
+            &lt;div class="title-area"&gt;
+                &lt;i class="fa-solid fa-business-time"&gt;&lt;/i&gt;
+                &lt;div&gt;
+                    &lt;h2 class="mb-0"&gt;Hours Summary&lt;/h2&gt;
+                    &lt;small&gt;View generated employee hours&lt;/small&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;!-- FILTERS --&gt;
+            &lt;div class="filters"&gt;
+
+                &lt;div class="row g-3"&gt;
+
+                    &lt;div class="col-md-3"&gt;
+                        &lt;label class="form-label"&gt;
+                            &lt;input type="checkbox" id="filterWeek"&gt;
+                            Filter by Week Range
+                        &lt;/label&gt;
+
+                        &lt;select id="weekRangeSelect" class="form-select"&gt;
+                            &lt;option value=""&gt;All Weeks&lt;/option&gt;
+                        &lt;/select&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="col-md-3"&gt;
+                        &lt;label class="form-label"&gt;
+                            &lt;input type="checkbox" id="filterMonth"&gt;
+                            Filter by Month
+                        &lt;/label&gt;
+
+                        &lt;select id="monthSelect" class="form-select"&gt;
+                            &lt;option value=""&gt;All Months&lt;/option&gt;
+                        &lt;/select&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="col-md-3"&gt;
+                        &lt;label class="form-label"&gt;
+                            &lt;input type="checkbox" id="filterHours"&gt;
+                            Minimum Hours
+                        &lt;/label&gt;
+
+                        &lt;input type="number" id="minHours" class="form-control" placeholder="Example: 40"&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="col-md-3"&gt;
+                        &lt;label class="form-label"&gt;
+                            &lt;input type="checkbox" id="filterEmployee"&gt;
+                            Employee
+                        &lt;/label&gt;
+
+                        &lt;input type="text" id="employeeSearch" class="form-control" placeholder="Search employee"&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class="col-md-3 d-flex align-items-end"&gt;
+                        &lt;button class="btn btn-primary w-100" id="applyFilters"&gt;
+                            &lt;i class="fa-solid fa-filter"&gt;&lt;/i&gt;
+                            Apply Filters
+                        &lt;/button&gt;
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+
+            &lt;/div&gt;
+
+            &lt;!-- TABLE --&gt;
+            &lt;div class="table-responsive"&gt;
+
+                &lt;table class="table table-bordered table-hover align-middle"&gt;
+
+                    &lt;thead&gt;
+                        &lt;tr&gt;
+                            &lt;th&gt;Week Range&lt;/th&gt;
+                            &lt;th&gt;Entries&lt;/th&gt;
+                            &lt;th&gt;Total Hours&lt;/th&gt;
+                        &lt;/tr&gt;
+                    &lt;/thead&gt;
+
+                    &lt;tbody id="summaryTable"&gt;&lt;/tbody&gt;
+
+                &lt;/table&gt;
+
+            &lt;/div&gt;
+
+            &lt;a href="/menu.html" class="btn btn-secondary btn-menu"&gt;
+                &lt;i class="fa-solid fa-arrow-left"&gt;&lt;/i&gt;
+                Back to Menu
+            &lt;/a&gt;
+
+        &lt;/div&gt;
+
+    &lt;/div&gt;
+    &lt;!-- WEEK DETAILS MODAL --&gt;
+    &lt;div class="modal fade" id="weekDetailsModal" tabindex="-1"&gt;
+        &lt;div class="modal-dialog modal-xl modal-dialog-scrollable"&gt;
+            &lt;div class="modal-content"&gt;
+
+                &lt;div class="modal-header"&gt;
+                    &lt;h5 class="modal-title" id="weekDetailsTitle"&gt;Week Details&lt;/h5&gt;
+                    &lt;button type="button" class="btn-close" data-bs-dismiss="modal"&gt;&lt;/button&gt;
+                &lt;/div&gt;
+
+                &lt;div class="modal-body"&gt;
+                    &lt;table class="table table-bordered table-hover"&gt;
+                        &lt;thead&gt;
+                            &lt;tr&gt;
+                                &lt;th&gt;Date&lt;/th&gt;
+                                &lt;th&gt;Hours&lt;/th&gt;
+                                &lt;th&gt;Type&lt;/th&gt;
+                                &lt;th&gt;Description&lt;/th&gt;
+                            &lt;/tr&gt;
+                        &lt;/thead&gt;
+
+                        &lt;tbody id="weekDetailsTable"&gt;&lt;/tbody&gt;
+                    &lt;/table&gt;
+                &lt;/div&gt;
+
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"&gt;&lt;/script&gt;
+    &lt;script src="summary.js"&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+<h2>./public/summary.js</h2>
+<pre>// summary.js
+
+const summaryTable = document.getElementById('summaryTable');
+const weekRangeSelect = document.getElementById('weekRangeSelect');
+const monthSelect = document.getElementById('monthSelect');
+
+let hoursData = [];
+let groupedWeeks = {};
+
+async function loadHoursFromDatabase() {
+    try {
+        const token = localStorage.getItem('token');
+
+        const response = await fetch('/api/hours/summary', {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Error loading hours summary');
+        }
+
+        hoursData = await response.json();
+
+        populateWeekRanges(hoursData);
+        populateMonths(hoursData);
+        loadTable(hoursData);
+
+    } catch (error) {
+        console.error(error);
+
+        summaryTable.innerHTML = `
+            &lt;tr&gt;
+                &lt;td colspan="3" class="text-center text-danger"&gt;
+                    Error loading hours summary
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    }
+}
+
+function populateWeekRanges(data) {
+    weekRangeSelect.innerHTML = '&lt;option value=""&gt;All Weeks&lt;/option&gt;';
+
+    const ranges = [];
+
+    data.forEach(item =&gt; {
+        const range = getWeekRange(item.date);
+        const value = `${range.start}|${range.end}`;
+        const label = `${range.start} to ${range.end}`;
+
+        if (!ranges.includes(value)) {
+            ranges.push(value);
+
+            weekRangeSelect.innerHTML += `
+                &lt;option value="${value}"&gt;
+                    ${label}
+                &lt;/option&gt;
+            `;
+        }
+    });
+}
+
+function getWeekRange(dateString) {
+    const date = new Date(dateString + 'T00:00:00');
+
+    const day = date.getDay(); // Sunday = 0
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diffToMonday);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    return {
+        start: formatDate(monday),
+        end: formatDate(sunday)
+    };
+}
+function populateMonths(data) {
+    monthSelect.innerHTML = '&lt;option value=""&gt;All Months&lt;/option&gt;';
+
+    const months = [];
+
+    data.forEach(item =&gt; {
+        const date = new Date(item.date + 'T00:00:00');
+
+        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+        const label = date.toLocaleString('en-US', {
+            month: 'long',
+            year: 'numeric'
+        });
+
+        if (!months.includes(value)) {
+            months.push(value);
+
+            monthSelect.innerHTML += `
+                &lt;option value="${value}"&gt;
+                    ${label}
+                &lt;/option&gt;
+            `;
+        }
+    });
+}
+
+function formatDate(date) {
+    return date.toISOString().split('T')[0];
+}
+
+function loadTable(data) {
+
+    summaryTable.innerHTML = '';
+
+    if (data.length === 0) {
+        summaryTable.innerHTML = `
+            &lt;tr&gt;
+                &lt;td colspan="3" class="text-center"&gt;
+                    No hours found
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+        return;
+    }
+
+    const grouped = {};
+
+    data.forEach(item =&gt; {
+
+        const range = getWeekRange(item.date);
+
+        const key = `${range.start} to ${range.end}`;
+
+        if (!grouped[key]) {
+            grouped[key] = {
+                entries: 0,
+                totalHours: 0,
+                items: []
+            };
+        }
+
+        grouped[key].entries += 1;
+        grouped[key].totalHours += Number(item.totalHours) || 0;
+        grouped[key].items.push(item);
+    });
+
+    Object.keys(grouped).forEach(key =&gt; {
+
+        const week = grouped[key];
+
+        summaryTable.innerHTML += `
+            &lt;tr&gt;
+                &lt;td&gt;${key}&lt;/td&gt;
+
+                &lt;td&gt;
+                    &lt;button class="btn btn-link p-0"
+                        onclick="showWeekDetails('${key}')"&gt;
+                        ${week.entries} entries
+                    &lt;/button&gt;
+                &lt;/td&gt;
+
+                &lt;td&gt;
+                    &lt;span class="hours-badge"&gt;
+                        ${week.totalHours.toFixed(1)} hrs
+                    &lt;/span&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    });
+    groupedWeeks = grouped;
+}
+
+document.getElementById('applyFilters')
+    .addEventListener('click', () =&gt; {
+
+        let filteredData = [...hoursData];
+
+        const filterWeek = document.getElementById('filterWeek').checked;
+        const filterHours = document.getElementById('filterHours').checked;
+        const filterEmployee = document.getElementById('filterEmployee').checked;
+        const filterMonth = document.getElementById('filterMonth').checked;
+
+        const selectedMonth = monthSelect.value;
+        const selectedWeekRange = weekRangeSelect.value;
+        const minHours = parseFloat(document.getElementById('minHours').value);
+        const employeeSearch = document.getElementById('employeeSearch').value.toLowerCase();
+
+        if (filterWeek &amp;&amp; selectedWeekRange !== '') {
+            const [start, end] = selectedWeekRange.split('|');
+
+            filteredData = filteredData.filter(item =&gt; {
+                const itemDate = item.date;
+                return itemDate &gt;= start &amp;&amp; itemDate &lt;= end;
+            });
+        }
+
+        if (filterHours &amp;&amp; !isNaN(minHours)) {
+            filteredData = filteredData.filter(item =&gt;
+                item.totalHours &gt;= minHours
+            );
+        }
+
+        if (filterMonth &amp;&amp; selectedMonth !== '') {
+            filteredData = filteredData.filter(item =&gt;
+                item.date.startsWith(selectedMonth)
+            );
+        }
+
+        if (filterEmployee &amp;&amp; employeeSearch !== '') {
+            filteredData = filteredData.filter(item =&gt;
+                item.employee.toLowerCase().includes(employeeSearch)
+            );
+        }
+
+        loadTable(filteredData);
+        
+    });
+
+function showWeekDetails(weekKey) {
+
+    const week = groupedWeeks[weekKey];
+
+    const title = document.getElementById('weekDetailsTitle');
+    const table = document.getElementById('weekDetailsTable');
+
+    title.textContent = `Details: ${weekKey}`;
+
+    table.innerHTML = '';
+
+    // PRACTICUM ENTRIES
+    const practicumItems = week.items.filter(item =&gt;
+        item.recordType === 'practicum'
+    );
+
+    // WORK ENTRIES
+    const workItems = week.items.filter(item =&gt;
+        (item.recordType || 'work') === 'work'
+    );
+
+    // PRACTICUM SECTION
+    if (practicumItems.length &gt; 0) {
+
+        let practicumTotal = 0;
+
+        table.innerHTML += `
+            &lt;tr class="table-primary"&gt;
+                &lt;td colspan="6"&gt;
+                    &lt;strong&gt;Practicum Entries&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+
+        practicumItems.forEach(item =&gt; {
+
+            practicumTotal += Number(item.totalHours) || 0;
+
+            table.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${item.date}&lt;/td&gt;
+
+                    &lt;td&gt;${item.totalHours} hrs&lt;/td&gt;
+                    &lt;td&gt;${item.recordType}&lt;/td&gt;
+                    &lt;td&gt;${item.description || ''}&lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+        });
+
+        table.innerHTML += `
+            &lt;tr class="table-primary"&gt;
+                &lt;td colspan="3"&gt;
+                    &lt;strong&gt;Total Practicum Hours&lt;/strong&gt;
+                &lt;/td&gt;
+
+                &lt;td colspan="3"&gt;
+                    &lt;strong&gt;${practicumTotal.toFixed(1)} hrs&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    }
+
+    // WORK SECTION
+    if (workItems.length &gt; 0) {
+
+        let workTotal = 0;
+
+        table.innerHTML += `
+            &lt;tr class="table-warning"&gt;
+                &lt;td colspan="6"&gt;
+                    &lt;strong&gt;Regular Work Entries&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+
+        workItems.forEach(item =&gt; {
+
+            workTotal += Number(item.totalHours) || 0;
+
+            table.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${item.date}&lt;/td&gt; 
+                    &lt;td&gt;${item.totalHours} hrs&lt;/td&gt;
+                    &lt;td&gt;${item.recordType}&lt;/td&gt;
+                    &lt;td&gt;${item.description || ''}&lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+        });
+
+        table.innerHTML += `
+            &lt;tr class="table-warning"&gt;
+                &lt;td colspan="3"&gt;
+                    &lt;strong&gt;Total Work Hours&lt;/strong&gt;
+                &lt;/td&gt;
+
+                &lt;td colspan="3"&gt;
+                    &lt;strong&gt;${workTotal.toFixed(1)} hrs&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    }
+
+    const modal =
+        new bootstrap.Modal(
+            document.getElementById('weekDetailsModal')
+        );
+
+    modal.show();
+}
+
+loadHoursFromDatabase();</pre>
+<h2>./routes/admin.routes.js</h2>
+<pre>const express = require('express');
+const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
+const { getAllUsers, resetUserPassword, deleteUser, getAllHours, getUserHours } = require('../controllers/admin.controller');
+
+const router = express.Router();
+
+// All routes require both authentication and admin privileges
+router.use(requireAuth);
+router.use(requireAdmin);
+
+router.get('/users', getAllUsers);
+router.put('/users/password', resetUserPassword);
+router.delete('/users/:userId', deleteUser);
+router.get('/hours', getAllHours);
+router.get('/users/:userId/hours', getUserHours);
+
+module.exports = router;
+</pre>
+<h2>./routes/auth.routes.js</h2>
+<pre>const express = require('express');
+const { register, login, changePassword } = require('../controllers/auth.controller');
+const { requireAuth } = require('../middleware/auth.middleware');
+
+const router = express.Router();
+router.post('/register', register);
+router.post('/login', login);
+router.put('/password', requireAuth, changePassword);
+
+module.exports = router;</pre>
+<h2>./routes/workHours.routes.js</h2>
+<pre>const express = require('express');
+const { requireAuth } = require('../middleware/auth.middleware');
+const { createHours, getMyHours, updateHours, deleteHours } = require('../controllers/workHours.controller');
+
+const router = express.Router();
+
+router.get('/', requireAuth, getMyHours);
+router.post('/', requireAuth, createHours);
+router.put('/:id', requireAuth, updateHours);
+router.delete('/:id', requireAuth, deleteHours);
+
+module.exports = router;</pre>
+<h2>./scripts/createAdmin.js</h2>
+<pre>require('dotenv').config();
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const User = require('../models/user.model');
+
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+    console.error('MONGO_URI is missing in .env file');
+    process.exit(1);
+}
+
+const createAdmin = async () =&gt; {
+    try {
+        await mongoose.connect(MONGO_URI);
+        console.log('✅ Mongo Connected');
+
+        const adminUsername = 'admin';
+        const adminPassword = 'Conectividad.1';
+
+        const existingAdmin = await User.findOne({ username: adminUsername });
+        if (existingAdmin) {
+            console.log(`Admin user '${adminUsername}' already exists. Updating role to admin just in case.`);
+            existingAdmin.role = 'admin';
+            existingAdmin.passwordHash = bcrypt.hashSync(adminPassword, 10);
+            await existingAdmin.save();
+            console.log('Admin user updated successfully.');
+            process.exit(0);
+        }
+
+        const passwordHash = bcrypt.hashSync(adminPassword, 10);
+
+        const adminUser = new User({
+            username: adminUsername,
+            passwordHash,
+            role: 'admin'
+        });
+
+        await adminUser.save();
+        console.log(`✅ Admin user '${adminUsername}' created successfully.`);
+
+        process.exit(0);
+    } catch (error) {
+        console.error('Error creating admin user:', error);
+        process.exit(1);
+    }
+};
+
+createAdmin();
+</pre>
+<h2>./server.js</h2>
+<pre>require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+
+const Hour = require('./models/hours.model'); // ✅ importa el modelo
+const authRoutes = require('./routes/auth.routes');
+const adminRoutes = require('./routes/admin.routes');
+const { requireAuth } = require('./middleware/auth.middleware');
+const inspectionRoutes = require('./inspection/inspection.routes');
+
+const app = express();
+
+const PORT = process.env.PORT || 3000;       // ✅ define port
+const MONGO_URI = process.env.MONGO_URI;     // ✅ toma del .env
+
+app.use(cors());
+app.use(express.json());
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/health', (req, res) =&gt; res.status(200).send('OK'));
+
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/inspection', inspectionRoutes);
+
+// Connect Mongo
+mongoose.connect(MONGO_URI)
+    .then(() =&gt; console.log('✅ Mongo Connected'))
+    .catch(err =&gt; console.log(err));
+
+// GET all hours
+app.get('/api/hours', requireAuth, async (req, res) =&gt; {
+    try {
+        const hours = await Hour.find({ userId: req.userId }).sort({ date: -1, startTime: -1 });
+        res.json(hours);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to read data' });
+    }
+});
+
+// GET hours summary
+app.get('/api/hours/summary', requireAuth, async (req, res) =&gt; {
+    try {
+        const hours = await Hour.find({ userId: req.userId })
+            .sort({ date: -1, startTime: -1 });
+
+        const summary = hours.map(item =&gt; {
+            const start = new Date(`2000-01-01T${item.startTime}`);
+            const end = new Date(`2000-01-01T${item.endTime}`);
+
+            const totalHours = (end - start) / (1000 * 60 * 60);
+
+            return {
+                employee: 'Me',
+                date: item.date,
+                week: getWeekLabel(item.date),
+                totalHours: totalHours,
+                recordType: item.recordType,
+                description: item.description
+            };
+        });
+
+        res.json(summary);
+
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to load summary' });
+    }
+});
+
+function getWeekLabel(dateString) {
+    const date = new Date(dateString);
+    const firstDay = new Date(date.getFullYear(), 0, 1);
+    const days = Math.floor((date - firstDay) / (24 * 60 * 60 * 1000));
+    const weekNumber = Math.ceil((days + firstDay.getDay() + 1) / 7);
+
+    return `Week ${weekNumber}`;
+}
+
+// POST new entry
+app.post('/api/hours', requireAuth, async (req, res) =&gt; {
+    try {
+        const { date, startTime, endTime, description, recordType } = req.body;
+
+        if (!date || !startTime || !endTime) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const newEntry = new Hour({
+            id: Date.now().toString(),
+            userId: req.userId,
+            date,
+            startTime,
+            endTime,
+            description: description || '',
+            recordType: recordType || 'work'
+        });
+
+        await newEntry.save();
+
+        res.status(201).json(newEntry);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to save data' });
+    }
+});
+
+// PUT update entry
+app.put('/api/hours/:id', requireAuth, async (req, res) =&gt; {
+    try {
+        const { id } = req.params;
+        const { date, startTime, endTime, description, recordType } = req.body;
+
+        if (!date || !startTime || !endTime) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const updated = await Hour.findOneAndUpdate(
+            { id, userId: req.userId },
+            { date, startTime, endTime, description: description || '', recordType: recordType || 'work' },
+            { new: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({ error: 'Entry not found' });
+        }
+
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update data' });
+    }
+});
+
+// DELETE entry
+app.delete('/api/hours/:id', requireAuth, async (req, res) =&gt; {
+    try {
+        const { id } = req.params;
+
+        const result = await Hour.deleteOne({ id, userId: req.userId });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ error: 'Entry not found' });
+        }
+
+        res.json({ message: 'Entry deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete data' });
+    }
+});
+
+app.listen(PORT, () =&gt; {
+    console.log(`Server running at http://localhost:${PORT}`);
+});</pre>
+<h2>./test.hours.json</h2>
+<pre>[{
+  "_id": {
+    "$oid": "699fc3858abef7aa73f5f242"
+  },
+  "id": "1772077957642",
+  "date": "2026-02-23",
+  "startTime": "09:00",
+  "endTime": "17:00",
+  "description": "Cornestone",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "699fc3af8abef7aa73f5f245"
+  },
+  "id": "1772077999136",
+  "date": "2026-02-24",
+  "startTime": "06:00",
+  "endTime": "17:00",
+  "description": "CorneStone",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "699fc3f38abef7aa73f5f248"
+  },
+  "id": "1772078067318",
+  "date": "2026-02-25",
+  "startTime": "09:00",
+  "endTime": "17:00",
+  "description": "CorneStone",
+  "__v": 0
+}]</pre>
+<h2>./views/inspection.hbs</h2>
+<pre>&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+
+&lt;head&gt;
+    &lt;style&gt;
+        #form-wrapper {
+            width: 100%;
+            overflow: auto;
+        }
+
+        #form-container {
+            position: relative;
+            width: 800px;
+            transform-origin: top left;
+        }
+
+        #form-container img {
+            width: 100%;
+        }
+
+        .field {
+            position: absolute;
+            border: none;
+            border-bottom: 1px solid black;
+            background: transparent;
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div id="form-wrapper"&gt;
+        &lt;div id="form-container"&gt;
+
+            &lt;img src="/img/form.png"&gt;
+
+            &lt;!-- Operator --&gt;
+            &lt;input id="operator" class="field" style="top: 140px; left: 120px; width: 200px;"&gt;
+
+            &lt;!-- Date --&gt;
+            &lt;input id="date" class="field" style="top: 140px; left: 500px; width: 120px;"&gt;
+
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;button onclick="generatePDF()"&gt;Generate PDF&lt;/button&gt;
+
+    &lt;script&gt;
+        function scaleForm() {
+            const container = document.getElementById('form-container');
+            const wrapper = document.getElementById('form-wrapper');
+
+            const scale = wrapper.clientWidth / 800;
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener('load', scaleForm);
+        window.addEventListener('resize', scaleForm);
+
+        function generatePDF() {
+            const data = {
+                operator: document.getElementById('operator').value,
+                date: document.getElementById('date').value
+            };
+
+            fetch('/inspection/pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(res =&gt; res.blob())
+                .then(blob =&gt; {
+                    const url = window.URL.createObjectURL(blob);
+                    window.open(url);
+                });
+        }
+    &lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;</pre>
+</body></html>
