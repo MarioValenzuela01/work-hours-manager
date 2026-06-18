@@ -145,9 +145,11 @@ exports.generatePDF = async (req, res) => {
         }
 
         const pdfBytes = await pdfDoc.save();
-
+        
+        const safeDate = data.date || new Date().toISOString().slice(0, 10);
+        
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'attachment; filename=inspection.pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=inspection-${safeDate}.pdf`);
         res.send(Buffer.from(pdfBytes));
 
     } catch (error) {

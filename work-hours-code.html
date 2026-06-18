@@ -1,0 +1,4602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Work Hours Manager - Source Code</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      color: #111;
+      margin: 30px;
+    }
+
+    h1 {
+      color: #123f73;
+      border-bottom: 3px solid #123f73;
+      padding-bottom: 10px;
+    }
+
+    h2 {
+      background: #123f73;
+      color: white;
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 35px;
+      font-size: 16px;
+    }
+
+    pre {
+      background: white;
+      border: 1px solid #ddd;
+      padding: 15px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    code {
+      font-family: Consolas, Monaco, "Courier New", monospace;
+    }
+
+    @media print {
+      body {
+        background: white;
+        margin: 20px;
+      }
+
+      h2 {
+        page-break-before: always;
+      }
+
+      pre {
+        border: 1px solid #999;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Work Hours Manager - Source Code</h1>
+
+<h2>app.js</h2>
+<pre><code>
+console.log(&#x27;Starting app.js...&#x27;);
+
+const express = require(&#x27;express&#x27;);
+const mongoose = require(&#x27;mongoose&#x27;);
+require(&#x27;dotenv&#x27;).config();
+
+const path = require(&#x27;path&#x27;);
+const cors = require(&#x27;cors&#x27;);
+
+const authRoutes = require(&#x27;./routes/auth.routes&#x27;);
+const workHoursRoutes = require(&#x27;./routes/workHours.routes&#x27;);
+const adminRoutes = require(&#x27;./routes/admin.routes&#x27;);
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, &#x27;public&#x27;)));
+
+app.get(&#x27;/health&#x27;, (req, res) =&gt; res.status(200).send(&#x27;OK&#x27;));
+
+app.use(&#x27;/api/auth&#x27;, authRoutes);
+app.use(&#x27;/api/hours&#x27;, workHoursRoutes);
+app.use(&#x27;/api/admin&#x27;, adminRoutes);
+
+app.get(&#x27;/api/test&#x27;, (req, res) =&gt; {
+  res.json({ message: &#x27;API running 🚀&#x27; });
+});
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() =&gt; console.log(&#x27;MongoDB Connected&#x27;))
+  .catch(err =&gt; console.log(&#x27;Mongo error:&#x27;, err.message));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =&gt; console.log(`Server running on port ${PORT}`));
+</code></pre>
+<h2>controllers/admin.controller.js</h2>
+<pre><code>
+const User = require(&#x27;../models/user.model&#x27;);
+const Hour = require(&#x27;../models/hours.model&#x27;);
+const bcrypt = require(&#x27;bcryptjs&#x27;);
+
+const getAllUsers = async (req, res) =&gt; {
+    try {
+        const users = await User.find({}, &#x27;-passwordHash&#x27;).sort({ username: 1 });
+        return res.status(200).json({ ok: true, users });
+    } catch (error) {
+        console.error(&#x27;Error fetching users:&#x27;, error);
+        return res.status(500).json({ ok: false, message: &#x27;Server error fetching users&#x27; });
+    }
+};
+
+const resetUserPassword = async (req, res) =&gt; {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+        return res.status(400).json({ ok: false, message: &#x27;User ID and new password are required&#x27; });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ ok: false, message: &#x27;User not found&#x27; });
+        }
+
+        user.passwordHash = bcrypt.hashSync(newPassword, 10);
+        await user.save();
+
+        return res.status(200).json({ ok: true, message: &#x27;Password reset successfully&#x27; });
+    } catch (error) {
+        console.error(&#x27;Error resetting password:&#x27;, error);
+        return res.status(500).json({ ok: false, message: &#x27;Server error resetting password&#x27; });
+    }
+};
+
+const deleteUser = async (req, res) =&gt; {
+    const { userId } = req.params;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ ok: false, message: &#x27;User not found&#x27; });
+        }
+
+        // Optionally prevent deleting self if req.userId === userId
+        if (req.userId === userId) {
+            return res.status(400).json({ ok: false, message: &#x27;Cannot delete your own admin account&#x27; });
+        }
+
+        // Delete user
+        await User.findByIdAndDelete(userId);
+        // Delete their associated hours
+        await Hour.deleteMany({ userId });
+
+        return res.status(200).json({ ok: true, message: &#x27;User and their hours deleted successfully&#x27; });
+    } catch (error) {
+        console.error(&#x27;Error deleting user:&#x27;, error);
+        return res.status(500).json({ ok: false, message: &#x27;Server error deleting user&#x27; });
+    }
+};
+
+const getAllHours = async (req, res) =&gt; {
+    try {
+        // We fetch all hours and ideally populate user info if there was a proper ref.
+        // Since hours.model probably stores userId as a String, we might need to manually group or just fetch all.
+        // Let&#x27;s fetch all hours. We&#x27;ll sort by date descending.
+        const hours = await Hour.find({}).sort({ date: -1, startTime: -1 });
+
+        // To make it easy for frontend, we can get all users and map them
+        const users = await User.find({}, &#x27;username&#x27;);
+        const userMap = {};
+        users.forEach(u =&gt; {
+            userMap[u._id.toString()] = u.username;
+        });
+
+        // Attach username to each hour
+        const hoursWithUsernames = hours.map(h =&gt; ({
+            ...h.toObject(),
+            username: userMap[h.userId] || &#x27;Unknown User&#x27;
+        }));
+
+        return res.status(200).json({ ok: true, hours: hoursWithUsernames });
+    } catch (error) {
+        console.error(&#x27;Error fetching all hours:&#x27;, error);
+        return res.status(500).json({ ok: false, message: &#x27;Server error fetching all hours&#x27; });
+    }
+};
+
+const getUserHours = async (req, res) =&gt; {
+    const { userId } = req.params;
+    try {
+        const hours = await Hour.find({ userId }).sort({ date: -1, startTime: -1 });
+        return res.status(200).json({ ok: true, hours });
+    } catch (error) {
+        console.error(&#x27;Error fetching user hours:&#x27;, error);
+        return res.status(500).json({ ok: false, message: &#x27;Server error fetching user hours&#x27; });
+    }
+};
+
+module.exports = { getAllUsers, resetUserPassword, deleteUser, getAllHours, getUserHours };
+
+</code></pre>
+<h2>controllers/auth.controller.js</h2>
+<pre><code>
+const bcrypt = require(&#x27;bcryptjs&#x27;);
+const jwt = require(&#x27;jsonwebtoken&#x27;);   // 👈 AGREGAR ESTA LINEA
+const User = require(&#x27;../models/user.model&#x27;);
+
+const register = async (req, res) =&gt; {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, message: &#x27;username and password required&#x27; });
+  }
+
+  const existing = await User.findOne({ username });
+  if (existing) {
+    return res.status(400).json({ ok: false, message: &#x27;Username already exists&#x27; });
+  }
+
+  const passwordHash = bcrypt.hashSync(password, 10);
+
+  await User.create({ username, passwordHash });
+  return res.status(201).json({ ok: true, message: &#x27;User created&#x27; });
+};
+
+const login = async (req, res) =&gt; {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ ok: false, message: &#x27;username and password required&#x27; });
+  }
+
+  const user = await User.findOne({ username });
+  if (!user) {
+    return res.status(401).json({ ok: false, message: &#x27;Invalid login&#x27; });
+  }
+
+  const match = bcrypt.compareSync(password, user.passwordHash);
+  if (!match) {
+    return res.status(401).json({ ok: false, message: &#x27;Invalid login&#x27; });
+  }
+
+  // ✅ Crear JWT
+  const token = jwt.sign(
+    { userId: user._id.toString(), role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: &#x27;2h&#x27; }
+  );
+
+  return res.status(200).json({
+    ok: true,
+    message: &#x27;Login OK&#x27;,
+    token,
+    role: user.role
+  });
+};
+
+const changePassword = async (req, res) =&gt; {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.userId;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ ok: false, message: &#x27;Old and new password required&#x27; });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ ok: false, message: &#x27;User not found&#x27; });
+    }
+
+    const match = bcrypt.compareSync(oldPassword, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ ok: false, message: &#x27;Invalid old password&#x27; });
+    }
+
+    user.passwordHash = bcrypt.hashSync(newPassword, 10);
+    await user.save();
+
+    return res.status(200).json({ ok: true, message: &#x27;Password updated successfully&#x27; });
+  } catch (error) {
+    console.error(&#x27;Change password error:&#x27;, error);
+    return res.status(500).json({ ok: false, message: &#x27;Server error changing password&#x27; });
+  }
+};
+
+module.exports = { register, login, changePassword };
+</code></pre>
+<h2>controllers/workHours.controller.js</h2>
+<pre><code>
+const WorkHours = require(&#x27;../models/workHours.model&#x27;);
+
+const createHours = async (req, res) =&gt; {
+  const { date, hours, note } = req.body;
+
+  if (!date || hours === undefined) {
+    return res.status(400).json({ ok: false, message: &#x27;date and hours required&#x27; });
+  }
+
+  const numHours = Number(hours);
+  if (Number.isNaN(numHours) || numHours &lt; 0) {
+    return res.status(400).json({ ok: false, message: &#x27;hours must be a number &gt;= 0&#x27; });
+  }
+
+  const item = await WorkHours.create({
+    userId: req.userId,
+    date: new Date(date),
+    hours: numHours,
+    note: note || &#x27;&#x27;
+  });
+
+  return res.status(201).json({ ok: true, item });
+};
+
+const getMyHours = async (req, res) =&gt; {
+  const items = await WorkHours.find({ userId: req.userId }).sort({ date: -1 });
+  return res.json({ ok: true, items });
+};
+
+const updateHours = async (req, res) =&gt; {
+  const { id } = req.params;
+  const { date, hours, note } = req.body;
+
+  const doc = await WorkHours.findOne({ _id: id, userId: req.userId });
+  if (!doc) {
+    return res.status(404).json({ ok: false, message: &#x27;Not found&#x27; });
+  }
+
+  if (date) doc.date = new Date(date);
+
+  if (hours !== undefined) {
+    const numHours = Number(hours);
+    if (Number.isNaN(numHours) || numHours &lt; 0) {
+      return res.status(400).json({ ok: false, message: &#x27;hours must be a number &gt;= 0&#x27; });
+    }
+    doc.hours = numHours;
+  }
+
+  if (note !== undefined) doc.note = note;
+
+  await doc.save();
+  return res.json({ ok: true, item: doc });
+};
+
+const deleteHours = async (req, res) =&gt; {
+  const { id } = req.params;
+
+  const deleted = await WorkHours.findOneAndDelete({ _id: id, userId: req.userId });
+  if (!deleted) {
+    return res.status(404).json({ ok: false, message: &#x27;Not found&#x27; });
+  }
+
+  return res.json({ ok: true, message: &#x27;Deleted&#x27; });
+};
+
+// ✅ Export al final
+module.exports = { createHours, getMyHours, updateHours, deleteHours };
+</code></pre>
+<h2>data/hours_old.json</h2>
+<pre><code>
+[
+  {
+    &quot;id&quot;: &quot;1771257900724&quot;,
+    &quot;date&quot;: &quot;2026-02-16&quot;,
+    &quot;startTime&quot;: &quot;16:00&quot;,
+    &quot;endTime&quot;: &quot;19:00&quot;,
+    &quot;description&quot;: &quot;Cornestone&quot;
+  },
+  {
+    &quot;id&quot;: &quot;1771433349840&quot;,
+    &quot;date&quot;: &quot;2026-02-18&quot;,
+    &quot;startTime&quot;: &quot;17:00&quot;,
+    &quot;endTime&quot;: &quot;19:00&quot;,
+    &quot;description&quot;: &quot;Conrnestone job&quot;
+  }
+]
+</code></pre>
+<h2>inspection/inspection.controller.js</h2>
+<pre><code>
+const fs = require(&#x27;fs&#x27;);
+const path = require(&#x27;path&#x27;);
+const { PDFDocument, StandardFonts } = require(&#x27;pdf-lib&#x27;);
+
+const Hour = require(&#x27;../models/hours.model&#x27;);
+
+exports.loadSelectHours = (req, res) =&gt; {
+    res.sendFile(path.join(__dirname, &#x27;../public/select-hours.html&#x27;));
+};
+
+exports.handleSelectHour = async (req, res) =&gt; {
+    const { hourId } = req.body;
+
+    if (!hourId) {
+        return res.status(400).json({ error: &#x27;Missing hourId&#x27; });
+    }
+
+    try {
+        const hour = await Hour.findOne({ id: hourId, userId: req.userId });
+
+        if (!hour) {
+            return res.status(404).json({ error: &#x27;Hour not found&#x27; });
+        }
+
+        const query =
+            `?date=${encodeURIComponent(hour.date)}` +
+            `&amp;hourStart=${encodeURIComponent(hour.startTime)}` +
+            `&amp;hourEnd=${encodeURIComponent(hour.endTime)}` +
+            `&amp;description=${encodeURIComponent(hour.description || &#x27;&#x27;)}`;
+
+        res.redirect(`/inspection${query}`);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: &#x27;Server error&#x27; });
+    }
+};
+
+exports.loadForm = (req, res) =&gt; {
+    res.sendFile(path.join(__dirname, &#x27;../public/inspection.html&#x27;));
+};
+
+exports.generatePDF = async (req, res) =&gt; {
+    try {
+        console.log(&quot;BODY:&quot;, req.body);
+
+        const data = req.body;
+
+        const existingPdfBytes = fs.readFileSync(
+            path.join(__dirname, &#x27;../templates/inspection-template.pdf&#x27;)
+        );
+
+        const pdfDoc = await PDFDocument.load(existingPdfBytes);
+        const page = pdfDoc.getPages()[0];
+
+        const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        page.drawText(data.operator || &#x27;&#x27;, { x: 140, y: 627, size: 12, font });
+        page.drawText(data.date || &#x27;&#x27;, { x: 443, y: 627, size: 12, font });
+        page.drawText(data.size || &#x27;&#x27;, { x: 142, y: 607, size: 14, font });
+        page.drawText(data.serialNumber || &#x27;&#x27;, { x: 303, y: 607, size: 12, font });
+        page.drawText(data.hourStart || &#x27;&#x27;, { x: 452, y: 607, size: 12, font });
+        page.drawText(data.hourEnd || &#x27;&#x27;, { x: 452, y: 587, size: 12, font });
+
+        page.drawText(&quot;Hour End:&quot;, { x: 390, y: 587, size: 12, font });
+
+        const drawX = (value, x, y) =&gt; {
+            if (value &amp;&amp; value.trim() !== &#x27;&#x27;) {
+                page.drawText(&#x27;X&#x27;, { x, y, size: 14, font });
+            }
+        };
+
+        drawX(data.field1, 282, 566);
+        drawX(data.field2, 282, 551);
+        drawX(data.field3, 282, 536);
+        drawX(data.field4, 282, 521);
+        drawX(data.field5, 282, 506);
+
+        drawX(data.field6, 282, 467);
+        drawX(data.field7, 282, 452);
+        drawX(data.field8, 282, 437);
+        drawX(data.field9, 282, 422);
+        drawX(data.field10, 282, 407);
+        drawX(data.field11, 282, 392);
+        drawX(data.field12, 282, 377);
+        drawX(data.field13, 282, 362);
+
+        drawX(data.field14, 517, 566);
+        drawX(data.field15, 517, 551);
+        drawX(data.field16, 517, 536);
+        drawX(data.field17, 517, 521);
+
+        drawX(data.field18, 517, 467);
+        drawX(data.field19, 517, 452);
+        drawX(data.field20, 517, 437);
+        drawX(data.field21, 517, 422);
+        drawX(data.field22, 517, 407);
+        drawX(data.field23, 517, 392);
+        drawX(data.field24, 517, 377);
+        drawX(data.field25, 517, 362);
+
+        drawX(data.field26, 196, 328);
+        drawX(data.field27, 196, 311);
+        drawX(data.field28, 196, 296);
+        drawX(data.field29, 196, 279);
+        drawX(data.field30, 196, 264);
+        drawX(data.field31, 196, 249);
+        drawX(data.field32, 196, 234);
+
+        const drawTextField = (value, x, y, width) =&gt; {
+            if (value &amp;&amp; value.trim() !== &#x27;&#x27;) {
+                const size = 10;
+                const textWidth = font.widthOfTextAtSize(value, size);
+                const offsetX = textWidth &lt; width ? (width - textWidth) / 2 : 0;
+
+                page.drawText(value, {
+                    x: x + offsetX,
+                    y,
+                    size,
+                    font
+                });
+            }
+        };
+
+        for (let i = 33; i &lt;= 39; i++) {
+            drawTextField(data[`field${i}`], 219, 328 - ((i - 33) * 16), 99);
+        }
+
+        for (let i = 40; i &lt;= 46; i++) {
+            drawTextField(data[`field${i}`], 325, 328 - ((i - 40) * 16), 82);
+        }
+
+        for (let i = 47; i &lt;= 53; i++) {
+            drawTextField(data[`field${i}`], 414, 328 - ((i - 47) * 16), 116);
+        }
+
+        if (data.comments &amp;&amp; data.comments.trim() !== &#x27;&#x27;) {
+            page.drawText(data.comments.trim(), {
+                x: 87,
+                y: 190,
+                size: 11,
+                maxWidth: 450,
+                lineHeight: 10
+            });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+
+        res.setHeader(&#x27;Content-Type&#x27;, &#x27;application/pdf&#x27;);
+        res.setHeader(&#x27;Content-Disposition&#x27;, &#x27;attachment; filename=inspection.pdf&#x27;);
+        res.send(Buffer.from(pdfBytes));
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send(&#x27;Error generating PDF&#x27;);
+    }
+};
+</code></pre>
+<h2>inspection/inspection.model.js</h2>
+<pre><code>
+
+</code></pre>
+<h2>inspection/inspection.routes.js</h2>
+<pre><code>
+const express = require(&#x27;express&#x27;);
+const router = express.Router();
+const controller = require(&#x27;./inspection.controller&#x27;);
+
+// Existing inspection routes
+router.get(&#x27;/&#x27;, controller.loadForm);
+router.post(&#x27;/pdf&#x27;, controller.generatePDF);
+
+// New routes for selecting hours
+router.get(&#x27;/select-hours&#x27;, controller.loadSelectHours);
+router.post(&#x27;/select-hours&#x27;, controller.handleSelectHour);
+
+module.exports = router;
+</code></pre>
+<h2>middleware/auth.middleware.js</h2>
+<pre><code>
+const jwt = require(&#x27;jsonwebtoken&#x27;);
+
+const requireAuth = (req, res, next) =&gt; {
+  const header = req.headers.authorization; // &quot;Bearer token&quot;
+  if (!header) return res.status(401).json({ ok: false, message: &#x27;Missing Authorization header&#x27; });
+
+  const parts = header.split(&#x27; &#x27;);
+  if (parts.length !== 2 || parts[0] !== &#x27;Bearer&#x27;) {
+    return res.status(401).json({ ok: false, message: &#x27;Invalid Authorization format&#x27; });
+  }
+
+  const token = parts[1];
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = payload.userId;
+    req.role = payload.role; // Extract role from JWT
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, message: &#x27;Invalid token&#x27; });
+  }
+};
+
+const requireAdmin = (req, res, next) =&gt; {
+  if (req.role !== &#x27;admin&#x27;) {
+    return res.status(403).json({ ok: false, message: &#x27;Forbidden: Admin access required&#x27; });
+  }
+  next();
+};
+
+module.exports = { requireAuth, requireAdmin };
+</code></pre>
+<h2>models/hours.model.js</h2>
+<pre><code>
+const mongoose = require(&#x27;mongoose&#x27;);
+
+const hourSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },   // mantengo tu id string
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: &#x27;User&#x27;, required: true },
+    date: { type: String, required: true },
+    startTime: { type: String, required: true },
+    endTime: { type: String, required: true },
+    description: { type: String, default: &#x27;&#x27; },
+    recordType: { type: String, enum: [&#x27;work&#x27;, &#x27;practicum&#x27;], default: &#x27;work&#x27; }
+});
+
+module.exports = mongoose.model(&#x27;Hour&#x27;, hourSchema);
+</code></pre>
+<h2>models/user.model.js</h2>
+<pre><code>
+const mongoose = require(&#x27;mongoose&#x27;);
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, trim: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: [&#x27;user&#x27;, &#x27;admin&#x27;], default: &#x27;user&#x27; }
+}, { timestamps: true });
+
+module.exports = mongoose.model(&#x27;User&#x27;, userSchema);
+</code></pre>
+<h2>models/workHours.model.js</h2>
+<pre><code>
+const mongoose = require(&#x27;mongoose&#x27;);
+
+const workHoursSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: &#x27;User&#x27;
+  },
+  date: {
+    type: Date,
+    required: true
+  },
+  hours: {
+    type: Number,
+    required: true
+  },
+  note: {
+    type: String
+  }
+}, { timestamps: true });
+
+module.exports = mongoose.model(&#x27;WorkHours&#x27;, workHoursSchema);
+</code></pre>
+<h2>package.json</h2>
+<pre><code>
+{
+  &quot;name&quot;: &quot;work-hours-manager&quot;,
+  &quot;version&quot;: &quot;1.0.0&quot;,
+  &quot;main&quot;: &quot;index.js&quot;,
+  &quot;scripts&quot;: {
+    &quot;test&quot;: &quot;echo \&quot;Error: no test specified\&quot; &amp;&amp; exit 1&quot;,
+    &quot;start&quot;: &quot;node server.js&quot;
+  },
+  &quot;keywords&quot;: [],
+  &quot;author&quot;: &quot;&quot;,
+  &quot;license&quot;: &quot;ISC&quot;,
+  &quot;description&quot;: &quot;&quot;,
+  &quot;dependencies&quot;: {
+    &quot;bcryptjs&quot;: &quot;^3.0.3&quot;,
+    &quot;cors&quot;: &quot;^2.8.6&quot;,
+    &quot;dotenv&quot;: &quot;^17.3.1&quot;,
+    &quot;express&quot;: &quot;^5.2.1&quot;,
+    &quot;jsonwebtoken&quot;: &quot;^9.0.3&quot;,
+    &quot;mongoose&quot;: &quot;^9.2.3&quot;,
+    &quot;pdf-lib&quot;: &quot;^1.17.1&quot;
+  }
+}
+
+</code></pre>
+<h2>public/admin.html</h2>
+<pre><code>
+&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;es&quot;&gt;
+
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+    &lt;title&gt;📅 Panel de Administrador - Banglabash WorkFlow&lt;/title&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.gstatic.com&quot; crossorigin&gt;
+    &lt;link href=&quot;https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap&quot; rel=&quot;stylesheet&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;style.css&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css&quot;&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+    &lt;div class=&quot;background-blobs&quot;&gt;
+        &lt;div class=&quot;blob blob-1&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-2&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-3&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;container&quot;&gt;
+        &lt;header style=&quot;display: flex; justify-content: space-between; align-items: center; width: 100%;&quot;&gt;
+            &lt;div&gt;
+                &lt;h1&gt;&lt;i class=&quot;fa-solid fa-users-cog&quot;&gt;&lt;/i&gt; Panel de Administrador&lt;/h1&gt;
+                &lt;p&gt;Gestionar Usuarios y Horas Globales&lt;/p&gt;
+            &lt;/div&gt;
+            &lt;div class=&quot;user-actions&quot; style=&quot;display: flex; gap: 1rem;&quot;&gt;
+                &lt;button id=&quot;btn-back-home&quot; class=&quot;btn-secondary&quot; style=&quot;font-size: 0.9rem; padding: 0.5rem 1rem;&quot;&gt;
+                    &lt;i class=&quot;fa-solid fa-home&quot;&gt;&lt;/i&gt; Volver a la App
+                &lt;/button&gt;
+                &lt;button id=&quot;btn-logout&quot; class=&quot;btn-primary&quot;
+                    style=&quot;background: var(--danger-color, #ef4444); border-color: var(--danger-color, #ef4444); font-size: 0.9rem; padding: 0.5rem 1rem;&quot;&gt;
+                    &lt;i class=&quot;fa-solid fa-sign-out-alt&quot;&gt;&lt;/i&gt; Cerrar Sesión
+                &lt;/button&gt;
+            &lt;/div&gt;
+        &lt;/header&gt;
+
+        &lt;main&gt;
+            &lt;section class=&quot;glass&quot; style=&quot;padding: 2rem; margin-top: 2rem;&quot;&gt;
+                &lt;div style=&quot;display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;&quot;&gt;
+                    &lt;h2&gt;Administración&lt;/h2&gt;
+                    &lt;div&gt;
+                        &lt;button id=&quot;btn-view-users&quot; class=&quot;btn-primary&quot; style=&quot;margin-right: 10px;&quot;&gt;Usuarios&lt;/button&gt;
+                        &lt;button id=&quot;btn-view-all-hours&quot; class=&quot;btn-secondary&quot;&gt;Horas Globales&lt;/button&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;!-- Admin Users View --&gt;
+                &lt;div id=&quot;admin-users-view&quot;&gt;
+                    &lt;h3&gt;Lista de Usuarios&lt;/h3&gt;
+                    &lt;div id=&quot;admin-users-list&quot; class=&quot;entries-list&quot;&gt;
+                        &lt;!-- Users injected here --&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;!-- Admin All Hours View --&gt;
+                &lt;div id=&quot;admin-all-hours-view&quot; style=&quot;display: none;&quot;&gt;
+                    &lt;div style=&quot;display: flex; justify-content: space-between; align-items: center;&quot;&gt;
+                        &lt;h3&gt;Todas las Horas Registradas&lt;/h3&gt;
+                        &lt;p&gt;&lt;strong&gt;Total Global:&lt;/strong&gt; &lt;span id=&quot;admin-global-total&quot;&gt;0h 0m&lt;/span&gt;&lt;/p&gt;
+                    &lt;/div&gt;
+                    &lt;div id=&quot;admin-all-hours-list&quot; class=&quot;entries-list&quot; style=&quot;margin-top: 1rem;&quot;&gt;
+                        &lt;!-- Hours injected here --&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+            &lt;/section&gt;
+        &lt;/main&gt;
+
+        &lt;!-- Admin Reset Password Modal --&gt;
+        &lt;div id=&quot;admin-reset-pw-modal&quot; class=&quot;modal-overlay&quot;
+            style=&quot;display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1001; justify-content: center; align-items: center;&quot;&gt;
+            &lt;div class=&quot;card glass&quot; style=&quot;width: 100%; max-width: 400px; padding: 2rem;&quot;&gt;
+                &lt;div style=&quot;display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;&quot;&gt;
+                    &lt;h3 style=&quot;margin: 0;&quot;&gt;Resetear Contraseña&lt;/h3&gt;
+                    &lt;button id=&quot;close-admin-reset-modal&quot;
+                        style=&quot;background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem;&quot;&gt;&lt;i
+                            class=&quot;fa-solid fa-times&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+                &lt;/div&gt;
+                &lt;form id=&quot;admin-reset-pw-form&quot;&gt;
+                    &lt;div style=&quot;margin-bottom: 1rem;&quot;&gt;
+                        &lt;strong&gt;Usuario: &lt;/strong&gt; &lt;span id=&quot;admin-reset-pw-username&quot;&gt;&lt;/span&gt;
+                    &lt;/div&gt;
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;admin-new-password&quot;&gt;Nueva Contraseña&lt;/label&gt;
+                        &lt;input type=&quot;password&quot; id=&quot;admin-new-password&quot; required&gt;
+                    &lt;/div&gt;
+                    &lt;button type=&quot;submit&quot; class=&quot;btn-primary&quot; style=&quot;width: 100%;&quot;&gt;Cambiar Contraseña&lt;/button&gt;
+                    &lt;div id=&quot;admin-password-error&quot; class=&quot;error-msg&quot; style=&quot;margin-top: 1rem; text-align: center;&quot;&gt;
+                    &lt;/div&gt;
+                &lt;/form&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+
+        &lt;!-- Admin User Specific Hours Modal --&gt;
+        &lt;div id=&quot;admin-user-hours-modal&quot; class=&quot;modal-overlay&quot;
+            style=&quot;display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1002; justify-content: center; align-items: center; overflow-y: auto; padding: 2rem;&quot;&gt;
+            &lt;div class=&quot;card glass&quot;
+                style=&quot;width: 100%; max-width: 800px; padding: 2rem; max-height: 90vh; overflow-y: auto;&quot;&gt;
+                &lt;div style=&quot;display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;&quot;&gt;
+                    &lt;h3 style=&quot;margin: 0;&quot;&gt;Horas de: &lt;span id=&quot;admin-user-hours-username&quot;
+                            style=&quot;color: var(--primary-color);&quot;&gt;&lt;/span&gt;&lt;/h3&gt;
+                    &lt;button id=&quot;close-admin-user-hours-modal&quot;
+                        style=&quot;background: none; border: none; color: white; cursor: pointer; font-size: 1.2rem;&quot;&gt;&lt;i
+                            class=&quot;fa-solid fa-times&quot;&gt;&lt;/i&gt;&lt;/button&gt;
+                &lt;/div&gt;
+                &lt;div style=&quot;margin-bottom: 1rem;&quot;&gt;
+                    &lt;strong&gt;Total Acumulado:&lt;/strong&gt; &lt;span id=&quot;admin-user-total-hours&quot;
+                        style=&quot;color: #10b981; font-weight: bold;&quot;&gt;0h 0m&lt;/span&gt;
+                &lt;/div&gt;
+                &lt;div id=&quot;admin-user-specific-hours-list&quot; class=&quot;entries-list&quot;&gt;
+                    &lt;!-- Specific User Hours injected here --&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+
+    &lt;/div&gt;
+
+    &lt;script src=&quot;admin.js&quot;&gt;&lt;/script&gt;
+&lt;/body&gt;
+
+&lt;/html&gt;
+</code></pre>
+<h2>public/admin.js</h2>
+<pre><code>
+document.addEventListener(&#x27;DOMContentLoaded&#x27;, () =&gt; {
+    // Check for token and admin role before anything else
+    const token = localStorage.getItem(&#x27;token&#x27;);
+    const role = localStorage.getItem(&#x27;role&#x27;);
+
+    if (!token) {
+        window.location.href = &#x27;login.html&#x27;;
+        return;
+    }
+
+    if (role !== &#x27;admin&#x27;) {
+        alert(&#x27;Acceso denegado: Se requieren permisos de administrador&#x27;);
+        window.location.href = &#x27;index.html&#x27;;
+        return;
+    }
+
+    const authHeaders = {
+        &#x27;Content-Type&#x27;: &#x27;application/json&#x27;,
+        &#x27;Authorization&#x27;: `Bearer ${token}`
+    };
+
+    // Logout logic
+    document.getElementById(&#x27;btn-logout&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+        localStorage.removeItem(&#x27;token&#x27;);
+        localStorage.removeItem(&#x27;role&#x27;);
+        window.location.href = &#x27;login.html&#x27;;
+    });
+
+    // Go back logic
+    document.getElementById(&#x27;btn-back-home&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+        window.location.href = &#x27;index.html&#x27;;
+    });
+
+    // Load users by default
+    fetchAdminUsers();
+
+    // Admin Tabs
+    document.getElementById(&#x27;btn-view-users&#x27;)?.addEventListener(&#x27;click&#x27;, () =&gt; {
+        document.getElementById(&#x27;admin-users-view&#x27;).style.display = &#x27;block&#x27;;
+        document.getElementById(&#x27;admin-all-hours-view&#x27;).style.display = &#x27;none&#x27;;
+        fetchAdminUsers();
+    });
+
+    document.getElementById(&#x27;btn-view-all-hours&#x27;)?.addEventListener(&#x27;click&#x27;, () =&gt; {
+        document.getElementById(&#x27;admin-users-view&#x27;).style.display = &#x27;none&#x27;;
+        document.getElementById(&#x27;admin-all-hours-view&#x27;).style.display = &#x27;block&#x27;;
+        fetchAdminAllHours();
+    });
+
+    // Admin functionality functions
+    async function fetchAdminUsers() {
+        try {
+            const res = await fetch(&#x27;/api/admin/users&#x27;, { headers: authHeaders });
+            const data = await res.json();
+            if (data.ok) {
+                renderAdminUsers(data.users);
+            } else {
+                alert(&#x27;Error fetching users: &#x27; + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function renderAdminUsers(users) {
+        const list = document.getElementById(&#x27;admin-users-list&#x27;);
+        list.innerHTML = &#x27;&#x27;;
+        if (users.length === 0) {
+            list.innerHTML = &#x27;&lt;p&gt;No users found&lt;/p&gt;&#x27;;
+            return;
+        }
+
+        const table = document.createElement(&#x27;table&#x27;);
+        table.style.width = &#x27;100%&#x27;;
+        table.innerHTML = `
+            &lt;thead&gt;
+                &lt;tr style=&quot;text-align: left;&quot;&gt;
+                    &lt;th&gt;Username&lt;/th&gt;
+                    &lt;th&gt;Role&lt;/th&gt;
+                    &lt;th&gt;Acciones&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+                ${users.map(u =&gt; `
+                    &lt;tr&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${escapeHtml(u.username)}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;&lt;span class=&quot;duration-pill&quot; style=&quot;background: ${u.role === &#x27;admin&#x27; ? &#x27;var(--primary-color)&#x27; : &#x27;var(--bg-card)&#x27;}&quot;&gt;${u.role}&lt;/span&gt;&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;
+                            &lt;button class=&quot;btn-primary&quot; style=&quot;padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;&quot; onclick=&quot;openAdminUserHoursModal(&#x27;${u._id}&#x27;, &#x27;${escapeHtml(u.username)}&#x27;)&quot;&gt;&lt;i class=&quot;fa-solid fa-clock&quot;&gt;&lt;/i&gt; Ver Horas&lt;/button&gt;
+                            &lt;button class=&quot;btn-secondary&quot; style=&quot;padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;&quot; onclick=&quot;openAdminResetModal(&#x27;${u._id}&#x27;, &#x27;${escapeHtml(u.username)}&#x27;)&quot;&gt;Cambiar Contraseña&lt;/button&gt;
+                            ${u.username !== localStorage.getItem(&#x27;username&#x27;) ? `&lt;button class=&quot;btn-primary&quot; style=&quot;background: var(--danger-color); border-color: var(--danger-color); padding: 0.3rem 0.6rem; font-size: 0.8rem;&quot; onclick=&quot;adminDeleteUser(&#x27;${u._id}&#x27;)&quot;&gt;&lt;i class=&quot;fa-solid fa-trash&quot;&gt;&lt;/i&gt;&lt;/button&gt;` : &#x27;&#x27;}
+                        &lt;/td&gt;
+                    &lt;/tr&gt;
+                `).join(&#x27;&#x27;)}
+            &lt;/tbody&gt;
+        `;
+        list.appendChild(table);
+    }
+
+    window.openAdminResetModal = (userId, username) =&gt; {
+        const modal = document.getElementById(&#x27;admin-reset-pw-modal&#x27;);
+        const form = document.getElementById(&#x27;admin-reset-pw-form&#x27;);
+        document.getElementById(&#x27;admin-reset-pw-username&#x27;).textContent = username;
+        form.dataset.userId = userId;
+        modal.style.display = &#x27;flex&#x27;;
+    };
+
+    document.getElementById(&#x27;close-admin-reset-modal&#x27;)?.addEventListener(&#x27;click&#x27;, () =&gt; {
+        const modal = document.getElementById(&#x27;admin-reset-pw-modal&#x27;);
+        modal.style.display = &#x27;none&#x27;;
+        document.getElementById(&#x27;admin-reset-pw-form&#x27;).reset();
+        document.getElementById(&#x27;admin-password-error&#x27;).textContent = &#x27;&#x27;;
+    });
+
+    document.getElementById(&#x27;admin-reset-pw-form&#x27;)?.addEventListener(&#x27;submit&#x27;, async (e) =&gt; {
+        e.preventDefault();
+        const userId = e.target.dataset.userId;
+        const newPassword = document.getElementById(&#x27;admin-new-password&#x27;).value;
+        const errEl = document.getElementById(&#x27;admin-password-error&#x27;);
+
+        try {
+            const res = await fetch(&#x27;/api/admin/users/password&#x27;, {
+                method: &#x27;PUT&#x27;,
+                headers: authHeaders,
+                body: JSON.stringify({ userId, newPassword })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                errEl.style.color = &#x27;#10b981&#x27;;
+                errEl.textContent = &#x27;¡Contraseña actualizada con éxito!&#x27;;
+                setTimeout(() =&gt; {
+                    document.getElementById(&#x27;admin-reset-pw-modal&#x27;).style.display = &#x27;none&#x27;;
+                    e.target.reset();
+                    errEl.textContent = &#x27;&#x27;;
+                }, 2000);
+            } else {
+                errEl.style.color = &#x27;#ef4444&#x27;;
+                errEl.textContent = data.message || &#x27;Error reseteando contraseña&#x27;;
+            }
+        } catch (err) {
+            errEl.style.color = &#x27;#ef4444&#x27;;
+            errEl.textContent = &#x27;Error de conexión&#x27;;
+        }
+    });
+
+    window.adminDeleteUser = async (userId) =&gt; {
+        if (!confirm(&#x27;¿Estás seguro de que deseas eliminar este usuario y todas sus horas registradas? Esta acción no se puede deshacer.&#x27;)) return;
+        try {
+            const res = await fetch(`/api/admin/users/${userId}`, {
+                method: &#x27;DELETE&#x27;,
+                headers: authHeaders
+            });
+            if (res.ok) {
+                fetchAdminUsers();
+            } else {
+                const data = await res.json();
+                alert(&#x27;Error al eliminar usuario: &#x27; + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    window.openAdminUserHoursModal = async (userId, username) =&gt; {
+        const modal = document.getElementById(&#x27;admin-user-hours-modal&#x27;);
+        document.getElementById(&#x27;admin-user-hours-username&#x27;).textContent = username;
+        const list = document.getElementById(&#x27;admin-user-specific-hours-list&#x27;);
+        const totalSpan = document.getElementById(&#x27;admin-user-total-hours&#x27;);
+
+        list.innerHTML = &#x27;&lt;p&gt;Cargando horas...&lt;/p&gt;&#x27;;
+        totalSpan.textContent = &#x27;0h 0m&#x27;;
+        modal.style.display = &#x27;flex&#x27;;
+
+        try {
+            const res = await fetch(`/api/admin/users/${userId}/hours`, { headers: authHeaders });
+            const data = await res.json();
+
+            if (data.ok) {
+                renderSpecificUserHours(data.hours, list, totalSpan);
+            } else {
+                list.innerHTML = `&lt;p style=&quot;color: var(--danger-color);&quot;&gt;Error fetching hours: ${data.message}&lt;/p&gt;`;
+            }
+        } catch (err) {
+            console.error(err);
+            list.innerHTML = `&lt;p style=&quot;color: var(--danger-color);&quot;&gt;Connection error fetching explicit hours.&lt;/p&gt;`;
+        }
+    };
+
+    document.getElementById(&#x27;close-admin-user-hours-modal&#x27;)?.addEventListener(&#x27;click&#x27;, () =&gt; {
+        document.getElementById(&#x27;admin-user-hours-modal&#x27;).style.display = &#x27;none&#x27;;
+    });
+
+    function renderSpecificUserHours(hours, listElement, totalSpanElement) {
+        listElement.innerHTML = &#x27;&#x27;;
+        let totalMinutesForUser = 0;
+
+        if (hours.length === 0) {
+            listElement.innerHTML = &#x27;&lt;p&gt;Este usuario no tiene horas registradas en el sistema.&lt;/p&gt;&#x27;;
+            return;
+        }
+
+        const table = document.createElement(&#x27;table&#x27;);
+        table.style.width = &#x27;100%&#x27;;
+        table.innerHTML = `
+            &lt;thead&gt;
+                &lt;tr style=&quot;text-align: left;&quot;&gt;
+                    &lt;th&gt;Fecha&lt;/th&gt;
+                    &lt;th&gt;Inicio&lt;/th&gt;
+                    &lt;th&gt;Fin&lt;/th&gt;
+                    &lt;th&gt;Descripción&lt;/th&gt;
+                    &lt;th&gt;Duración&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+                ${hours.map(h =&gt; {
+            const duration = calculateDuration(h.startTime, h.endTime);
+            totalMinutesForUser += duration;
+            return `
+                    &lt;tr&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${formatDateShort(new Date(h.date + &#x27;T00:00:00&#x27;))}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${h.startTime}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${h.endTime}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${escapeHtml(h.description || &#x27;Sin descripción&#x27;)}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;&lt;span class=&quot;duration-pill&quot;&gt;${formatDuration(duration)}&lt;/span&gt;&lt;/td&gt;
+                    &lt;/tr&gt;
+                `}).join(&#x27;&#x27;)}
+            &lt;/tbody&gt;
+        `;
+        listElement.appendChild(table);
+        totalSpanElement.textContent = formatDuration(totalMinutesForUser);
+    }
+
+    async function fetchAdminAllHours() {
+        try {
+            const res = await fetch(&#x27;/api/admin/hours&#x27;, { headers: authHeaders });
+            const data = await res.json();
+            if (data.ok) {
+                renderAdminAllHours(data.hours);
+            } else {
+                alert(&#x27;Error fetching all hours: &#x27; + data.message);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    function renderAdminAllHours(hours) {
+        const list = document.getElementById(&#x27;admin-all-hours-list&#x27;);
+        list.innerHTML = &#x27;&#x27;;
+        let totalGlobalMinutes = 0;
+
+        if (hours.length === 0) {
+            list.innerHTML = &#x27;&lt;p&gt;No hay horas registradas en el sistema aún.&lt;/p&gt;&#x27;;
+            document.getElementById(&#x27;admin-global-total&#x27;).textContent = &#x27;0h 0m&#x27;;
+            return;
+        }
+
+        const table = document.createElement(&#x27;table&#x27;);
+        table.style.width = &#x27;100%&#x27;;
+        table.innerHTML = `
+            &lt;thead&gt;
+                &lt;tr style=&quot;text-align: left;&quot;&gt;
+                    &lt;th&gt;Usuario&lt;/th&gt;
+                    &lt;th&gt;Fecha&lt;/th&gt;
+                    &lt;th&gt;Inicio&lt;/th&gt;
+                    &lt;th&gt;Fin&lt;/th&gt;
+                    &lt;th&gt;Duración&lt;/th&gt;
+                &lt;/tr&gt;
+            &lt;/thead&gt;
+            &lt;tbody&gt;
+                ${hours.map(h =&gt; {
+            const duration = calculateDuration(h.startTime, h.endTime);
+            totalGlobalMinutes += duration;
+            return `
+                    &lt;tr&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;&lt;strong&gt;${escapeHtml(h.username)}&lt;/strong&gt;&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${formatDateShort(new Date(h.date + &#x27;T00:00:00&#x27;))}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${h.startTime}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;${h.endTime}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);&quot;&gt;&lt;span class=&quot;duration-pill&quot;&gt;${formatDuration(duration)}&lt;/span&gt;&lt;/td&gt;
+                    &lt;/tr&gt;
+                `}).join(&#x27;&#x27;)}
+            &lt;/tbody&gt;
+        `;
+        list.appendChild(table);
+        document.getElementById(&#x27;admin-global-total&#x27;).textContent = formatDuration(totalGlobalMinutes);
+    }
+
+    // Helper functions
+    function calculateDuration(start, end) {
+        const [startH, startM] = start.split(&#x27;:&#x27;).map(Number);
+        const [endH, endM] = end.split(&#x27;:&#x27;).map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        return endMinutes - startMinutes;
+    }
+
+    function formatDuration(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${h}h ${m}m`;
+    }
+
+    function formatDateShort(date) {
+        return date.toLocaleDateString(&#x27;es-ES&#x27;, { day: &#x27;numeric&#x27;, month: &#x27;short&#x27; });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return &#x27;&#x27;;
+        return text
+            .replace(/&amp;/g, &quot;&amp;amp;&quot;)
+            .replace(/&lt;/g, &quot;&amp;lt;&quot;)
+            .replace(/&gt;/g, &quot;&amp;gt;&quot;)
+            .replace(/&quot;/g, &quot;&amp;quot;&quot;)
+            .replace(/&#x27;/g, &quot;&amp;#039;&quot;);
+    }
+});
+
+</code></pre>
+<h2>public/index.html</h2>
+<pre><code>
+&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;es&quot;&gt;
+
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+
+    &lt;title&gt;Banglabash WorkFlow&lt;/title&gt;
+
+        &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; href=&quot;/images/Hours.png&quot;&gt;
+
+
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.gstatic.com&quot; crossorigin&gt;
+
+    &lt;link href=&quot;https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap&quot;
+        rel=&quot;stylesheet&quot;&gt;
+
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;style.css&quot;&gt;
+
+    &lt;link rel=&quot;stylesheet&quot;
+        href=&quot;https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css&quot;&gt;
+
+    &lt;style&gt;
+
+        @media (max-width: 768px) {
+
+            .container {
+                padding: 1rem;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 1rem;
+            }
+
+            .user-actions {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .user-actions button {
+                width: 100%;
+            }
+
+            .dashboard {
+                display: grid;
+                grid-template-columns: 1fr !important;
+                gap: 1rem;
+            }
+
+            .form-row {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .history-tabs {
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .entries-section {
+                overflow-x: auto;
+            }
+
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .stat {
+                font-size: 2rem;
+            }
+
+        }
+
+    &lt;/style&gt;
+
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div class=&quot;background-blobs&quot;&gt;
+        &lt;div class=&quot;blob blob-1&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-2&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-3&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;container&quot;&gt;
+
+        &lt;header style=&quot;display: flex; justify-content: space-between; align-items: center; width: 100%;&quot;&gt;
+
+            &lt;div&gt;
+                &lt;h1&gt;
+                    &lt;i class=&quot;fa-solid fa-clock&quot;&gt;&lt;/i&gt;
+                    Banglabash WorkFlow
+                &lt;/h1&gt;
+
+                &lt;p&gt;Manage your Time&lt;/p&gt;
+            &lt;/div&gt;
+
+            &lt;div class=&quot;user-actions&quot; style=&quot;display: flex; gap: 1rem;&quot;&gt;
+
+                &lt;button id=&quot;btn-menu&quot;
+                    class=&quot;btn-secondary&quot;
+                    style=&quot;font-size: 0.9rem; padding: 0.5rem 1rem;&quot;&gt;
+
+                    &lt;i class=&quot;fa-solid fa-house&quot;&gt;&lt;/i&gt;
+                    Menu
+                &lt;/button&gt;
+
+                &lt;button id=&quot;btn-admin-panel&quot;
+                    class=&quot;btn-secondary&quot;
+                    style=&quot;font-size: 0.9rem; padding: 0.5rem 1rem; display: none;&quot;&gt;
+
+                    &lt;i class=&quot;fa-solid fa-users-cog&quot;&gt;&lt;/i&gt;
+                    Admin
+                &lt;/button&gt;
+
+                &lt;button id=&quot;btn-change-password&quot;
+                    class=&quot;btn-secondary&quot;
+                    style=&quot;font-size: 0.9rem; padding: 0.5rem 1rem;&quot;&gt;
+
+                    &lt;i class=&quot;fa-solid fa-key&quot;&gt;&lt;/i&gt;
+                    Key
+                &lt;/button&gt;
+
+                &lt;button id=&quot;btn-logout&quot;
+                    class=&quot;btn-primary&quot;
+                    style=&quot;background: var(--danger-color, #ef4444);
+                           border-color: var(--danger-color, #ef4444);
+                           font-size: 0.9rem;
+                           padding: 0.5rem 1rem;&quot;&gt;
+
+                    &lt;i class=&quot;fa-solid fa-sign-out-alt&quot;&gt;&lt;/i&gt;
+                    Logout
+                &lt;/button&gt;
+
+            &lt;/div&gt;
+
+        &lt;/header&gt;
+
+        &lt;!-- Password Modal --&gt;
+
+        &lt;div id=&quot;password-modal&quot;
+            class=&quot;modal-overlay&quot;
+            style=&quot;display:none;
+                   position:fixed;
+                   top:0;
+                   left:0;
+                   width:100%;
+                   height:100%;
+                   background:rgba(0,0,0,0.5);
+                   z-index:1000;
+                   justify-content:center;
+                   align-items:center;&quot;&gt;
+
+            &lt;div class=&quot;card glass&quot;
+                style=&quot;width:100%;
+                       max-width:400px;
+                       padding:2rem;&quot;&gt;
+
+                &lt;div style=&quot;display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            margin-bottom:1.5rem;&quot;&gt;
+
+                    &lt;h3 style=&quot;margin:0;&quot;&gt;Change Password&lt;/h3&gt;
+
+                    &lt;button id=&quot;close-modal&quot;
+                        style=&quot;background:none;
+                               border:none;
+                               color:white;
+                               cursor:pointer;
+                               font-size:1.2rem;&quot;&gt;
+
+                        &lt;i class=&quot;fa-solid fa-times&quot;&gt;&lt;/i&gt;
+
+                    &lt;/button&gt;
+
+                &lt;/div&gt;
+
+                &lt;form id=&quot;password-form&quot;&gt;
+
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;old-password&quot;&gt;Current Password&lt;/label&gt;
+                        &lt;input type=&quot;password&quot; id=&quot;old-password&quot; required&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;new-password&quot;&gt;New Password&lt;/label&gt;
+                        &lt;input type=&quot;password&quot; id=&quot;new-password&quot; required&gt;
+                    &lt;/div&gt;
+
+                    &lt;button type=&quot;submit&quot;
+                        class=&quot;btn-primary&quot;
+                        style=&quot;width:100%;&quot;&gt;
+
+                        Submit
+                    &lt;/button&gt;
+
+                    &lt;div id=&quot;password-error&quot;
+                        class=&quot;error-msg&quot;
+                        style=&quot;margin-top:1rem;
+                               text-align:center;&quot;&gt;
+                    &lt;/div&gt;
+
+                &lt;/form&gt;
+
+            &lt;/div&gt;
+
+        &lt;/div&gt;
+
+        &lt;main&gt;
+
+            &lt;section class=&quot;dashboard&quot;&gt;
+
+                &lt;div class=&quot;card glass&quot;&gt;
+                    &lt;h3&gt;Total Today&lt;/h3&gt;
+                    &lt;div class=&quot;stat&quot; id=&quot;total-today&quot;&gt;0h 0m&lt;/div&gt;
+                &lt;/div&gt;
+
+                &lt;div class=&quot;card glass&quot;&gt;
+                    &lt;h3&gt;Total Week&lt;/h3&gt;
+                    &lt;div class=&quot;stat&quot; id=&quot;total-week&quot;&gt;0h 0m&lt;/div&gt;
+                &lt;/div&gt;
+
+            &lt;/section&gt;
+
+            &lt;section class=&quot;input-section glass&quot;&gt;
+
+                &lt;h2&gt;New Schedule&lt;/h2&gt;
+
+                &lt;form id=&quot;work-form&quot;&gt;
+
+                    &lt;div class=&quot;form-group type-selector&quot;
+                        style=&quot;display:flex;
+                               gap:1rem;
+                               margin-bottom:1rem;&quot;&gt;
+
+                        &lt;label class=&quot;radio-card&quot;
+                            style=&quot;flex:1;
+                                   cursor:pointer;&quot;&gt;
+
+                            &lt;input type=&quot;radio&quot;
+                                name=&quot;recordType&quot;
+                                value=&quot;work&quot;
+                                checked
+                                style=&quot;display:none;&quot;&gt;
+
+                            &lt;div class=&quot;card-content glass&quot;
+                                id=&quot;card-work&quot;
+                                style=&quot;text-align:center;
+                                       padding:0.5rem;
+                                       border:2px solid var(--primary-color);
+                                       border-radius:8px;&quot;&gt;
+
+                                Hours of Work
+                            &lt;/div&gt;
+
+                        &lt;/label&gt;
+
+                        &lt;label class=&quot;radio-card&quot;
+                            style=&quot;flex:1;
+                                   cursor:pointer;&quot;&gt;
+
+                            &lt;input type=&quot;radio&quot;
+                                name=&quot;recordType&quot;
+                                value=&quot;practicum&quot;
+                                style=&quot;display:none;&quot;&gt;
+
+                            &lt;div class=&quot;card-content glass&quot;
+                                id=&quot;card-practicum&quot;
+                                style=&quot;text-align:center;
+                                       padding:0.5rem;
+                                       border:2px solid transparent;
+                                       border-radius:8px;&quot;&gt;
+
+                                Hours of Practicum
+                            &lt;/div&gt;
+
+                        &lt;/label&gt;
+
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;date&quot;&gt;Date&lt;/label&gt;
+                        &lt;input type=&quot;date&quot; id=&quot;date&quot; required&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;form-row&quot;&gt;
+
+                        &lt;div class=&quot;form-group&quot;&gt;
+                            &lt;label for=&quot;start-time&quot;&gt;Start Time&lt;/label&gt;
+                            &lt;input type=&quot;time&quot; id=&quot;start-time&quot; required&gt;
+                        &lt;/div&gt;
+
+                        &lt;div class=&quot;form-group&quot;&gt;
+                            &lt;label for=&quot;end-time&quot;&gt;End Time&lt;/label&gt;
+                            &lt;input type=&quot;time&quot; id=&quot;end-time&quot; required&gt;
+                        &lt;/div&gt;
+
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;form-group toggle-group&quot;
+                        style=&quot;display:flex;
+                               align-items:center;
+                               gap:1rem;
+                               margin-top:1rem;
+                               margin-bottom:1.25rem;&quot;&gt;
+
+                        &lt;label class=&quot;switch&quot;&gt;
+                            &lt;input type=&quot;checkbox&quot; id=&quot;day-off-toggle&quot;&gt;
+                            &lt;span class=&quot;slider round&quot;&gt;&lt;/span&gt;
+                        &lt;/label&gt;
+
+                        &lt;span style=&quot;font-weight:600;
+                                     color:var(--text-color);&quot;&gt;
+
+                            Day Off
+                        &lt;/span&gt;
+
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;description&quot;&gt;Description&lt;/label&gt;
+
+                        &lt;input type=&quot;text&quot;
+                            id=&quot;description&quot;
+                            value=&quot;CornerStone&quot;
+                            placeholder=&quot;What did you work on?&quot;
+                            autocomplete=&quot;off&quot;&gt;
+                    &lt;/div&gt;
+
+                    &lt;button type=&quot;submit&quot; class=&quot;btn-primary&quot;&gt;
+
+                        &lt;i class=&quot;fa-solid fa-plus&quot;&gt;&lt;/i&gt;
+                        Add
+
+                    &lt;/button&gt;
+
+                    &lt;div id=&quot;form-error&quot; class=&quot;error-msg&quot;&gt;&lt;/div&gt;
+
+                &lt;/form&gt;
+
+            &lt;/section&gt;
+
+            &lt;section class=&quot;entries-section glass&quot;&gt;
+
+                &lt;div style=&quot;display:flex;
+                            justify-content:space-between;
+                            align-items:center;
+                            margin-bottom:1.5rem;&quot;&gt;
+
+                    &lt;h2 style=&quot;margin:0;&quot;&gt;History&lt;/h2&gt;
+
+                    &lt;div class=&quot;history-tabs&quot;
+                        style=&quot;display:flex;
+                               gap:0.5rem;
+                               background:rgba(15,23,42,0.6);
+                               padding:0.25rem;
+                               border-radius:8px;&quot;&gt;
+
+                        &lt;button type=&quot;button&quot;
+                            id=&quot;tab-work&quot;
+                            class=&quot;tab-btn active&quot;
+                            style=&quot;background:var(--primary-color);
+                                   border:none;
+                                   padding:0.5rem 1rem;
+                                   border-radius:6px;
+                                   color:white;
+                                   cursor:pointer;
+                                   font-weight:600;
+                                   transition:all 0.2s;&quot;&gt;
+
+                            Hours of Work
+                        &lt;/button&gt;
+
+                        &lt;button type=&quot;button&quot;
+                            id=&quot;tab-practicum&quot;
+                            class=&quot;tab-btn&quot;
+                            style=&quot;background:transparent;
+                                   border:none;
+                                   padding:0.5rem 1rem;
+                                   border-radius:6px;
+                                   color:var(--text-muted);
+                                   cursor:pointer;
+                                   font-weight:600;
+                                   transition:all 0.2s;&quot;&gt;
+
+                            Hours of Practicum
+                        &lt;/button&gt;
+
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+
+                &lt;div id=&quot;entries-list&quot; class=&quot;entries-list&quot;&gt;
+
+                    &lt;div class=&quot;empty-state&quot;&gt;
+
+                        &lt;i class=&quot;fa-regular fa-calendar-xmark&quot;&gt;&lt;/i&gt;
+
+                        &lt;p&gt;No entries yet&lt;/p&gt;
+
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+
+            &lt;/section&gt;
+
+        &lt;/main&gt;
+
+    &lt;/div&gt;
+
+    &lt;script&gt;
+
+        document.getElementById(&#x27;btn-menu&#x27;)
+            .addEventListener(&#x27;click&#x27;, () =&gt; {
+
+                window.location.href = &#x27;menu.html&#x27;;
+
+            });
+
+    &lt;/script&gt;
+
+    &lt;script src=&quot;script.js&quot;&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;
+</code></pre>
+<h2>public/inspection.html</h2>
+<pre><code>
+&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+
+&lt;head&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+
+    &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; href=&quot;/images/Inspection.png&quot;&gt;
+
+    &lt;style&gt;
+        body {
+            margin: 0;
+            font-family: Arial;
+            padding-bottom: 100px;
+        }
+
+        #form-wrapper {
+            width: 100%;
+            overflow: auto;
+        }
+
+        #form-container {
+            position: relative;
+            width: 800px;
+            transform-origin: top left;
+        }
+
+        #form-container img {
+            width: 100%;
+        }
+
+        .field {
+            position: absolute;
+            border: 1px solid black;
+            border-bottom: 1px solid black;
+            background: rgba(250, 235, 215, 0.5);
+            font-size: 18px;
+            font-weight: bold;
+
+            height: 22px;
+            line-height: 23px;
+            padding: 0;
+        }
+
+        .fieldX {
+            position: absolute;
+            border: 1px solid black;
+            background: rgba(250, 235, 215, 0.5);
+
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+
+            height: 22px;
+            line-height: 23px;
+            padding: 0;
+        }
+
+        .btn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 15px;
+            background: black;
+            color: white;
+            border: none;
+            font-size: 16px;
+            z-index: 9999;
+        }
+
+        .label {
+            position: absolute;
+            font-size: 20px;
+            font-weight: bold;
+            color: black;
+        }
+
+        .fieldCenter {
+            position: absolute;
+            border: 1px solid black;
+
+            height: 22px;
+            line-height: 23px;
+            padding: 0;
+
+            /* border-bottom: 1px solid black; */
+            background: rgba(250, 235, 215, 0.5);
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div id=&quot;form-wrapper&quot;&gt;
+        &lt;div id=&quot;form-container&quot;&gt;
+
+            &lt;!-- 👇 OJO: asegúrate que esta ruta existe --&gt;
+            &lt;img src=&quot;/images/form.png&quot;&gt;
+            &lt;script&gt;
+                document.addEventListener(&#x27;DOMContentLoaded&#x27;, () =&gt; {
+                    const qp = new URLSearchParams(window.location.search);
+                    if (qp.has(&#x27;date&#x27;)) document.getElementById(&#x27;date&#x27;).value = qp.get(&#x27;date&#x27;);
+                    if (qp.has(&#x27;hourStart&#x27;)) document.getElementById(&#x27;hourStart&#x27;).value = qp.get(&#x27;hourStart&#x27;);
+                    if (qp.has(&#x27;hourEnd&#x27;)) document.getElementById(&#x27;hourEnd&#x27;).value = qp.get(&#x27;hourEnd&#x27;);
+                });
+            &lt;/script&gt;
+
+            &lt;!-- Operator --&gt;
+            &lt;input id=&quot;operator&quot; class=&quot;field&quot; style=&quot;top: 308px; left: 160px; width: 380px;&quot;
+                placeholder=&quot;Enter operator name&quot;&gt;
+
+            &lt;!-- Date --&gt;
+            &lt;input type=&quot;date&quot; id=&quot;date&quot; class=&quot;field&quot; style=&quot;top: 308px; left: 600px; width: 120px;&quot;&gt;
+
+            &lt;!-- Long or Small --&gt;
+            &lt;input id=&quot;size&quot; class=&quot;field&quot; style=&quot;top: 338px; left: 160px; width: 150px;&quot; placeholder=&quot;Long or Small&quot;&gt;
+
+            &lt;!-- Serial Number --&gt;
+            &lt;input id=&quot;serialNumber&quot; class=&quot;field&quot; style=&quot;top: 338px; left: 395px; width: 150px;&quot;&gt;
+
+            &lt;!-- Hour Start --&gt;
+            &lt;input id=&quot;hourStart&quot; class=&quot;field&quot; style=&quot;top: 338px; left: 605px; width: 120px;&quot; placeholder=&quot;Hour Start&quot;&gt;
+
+
+            &lt;p class=&quot;label&quot; style=&quot;top: 350px; left: 495px;&quot;&gt;End Hours:&lt;/p&gt;
+            &lt;!-- Hour End --&gt;
+            &lt;input id=&quot;hourEnd&quot; class=&quot;field&quot; style=&quot;top: 368px; left: 605px; width: 120px;&quot; placeholder=&quot;Hour End&quot;&gt;
+
+            &lt;!-- field1 --&gt;
+            &lt;input id=&quot;field1&quot; name=&quot;field1&quot; class=&quot;fieldX&quot; style=&quot;top: 400px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field2 --&gt;
+            &lt;input id=&quot;field2&quot; name=&quot;field2&quot; class=&quot;fieldX&quot; style=&quot;top: 422px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field3 --&gt;
+            &lt;input id=&quot;field3&quot; name=&quot;field3&quot; class=&quot;fieldX&quot; style=&quot;top: 444px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field4 --&gt;
+            &lt;input id=&quot;field4&quot; name=&quot;field4&quot; class=&quot;fieldX&quot; style=&quot;top: 466px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field5 --&gt;
+            &lt;input id=&quot;field5&quot; name=&quot;field5&quot; class=&quot;fieldX&quot; style=&quot;top: 488px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field6 --&gt;
+            &lt;input id=&quot;field6&quot; name=&quot;field6&quot; class=&quot;fieldX&quot; style=&quot;top: 543px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field7 --&gt;
+            &lt;input id=&quot;field7&quot; name=&quot;field7&quot; class=&quot;fieldX&quot; style=&quot;top: 565px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field8 --&gt;
+            &lt;input id=&quot;field8&quot; name=&quot;field8&quot; class=&quot;fieldX&quot; style=&quot;top: 586px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field9 --&gt;
+            &lt;input id=&quot;field9&quot; name=&quot;field9&quot; class=&quot;fieldX&quot; style=&quot;top: 608px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field10 --&gt;
+            &lt;input id=&quot;field10&quot; name=&quot;field10&quot; class=&quot;fieldX&quot; style=&quot;top: 630px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field11 --&gt;
+            &lt;input id=&quot;field11&quot; name=&quot;field11&quot; class=&quot;fieldX&quot; style=&quot;top: 652px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field12 --&gt;
+            &lt;input id=&quot;field12&quot; name=&quot;field12&quot; class=&quot;fieldX&quot; style=&quot;top: 674px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field13 --&gt;
+            &lt;input id=&quot;field13&quot; name=&quot;field13&quot; class=&quot;fieldX&quot; style=&quot;top: 696px; left: 357px; width: 23px;&quot;&gt;
+            &lt;!-- field14 --&gt;
+            &lt;input id=&quot;field14&quot; name=&quot;field14&quot; class=&quot;fieldX&quot; style=&quot;top: 401px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field15 --&gt;
+            &lt;input id=&quot;field15&quot; name=&quot;field15&quot; class=&quot;fieldX&quot; style=&quot;top: 422px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field16 --&gt;
+            &lt;input id=&quot;field16&quot; name=&quot;field16&quot; class=&quot;fieldX&quot; style=&quot;top: 444px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field17 --&gt;
+            &lt;input id=&quot;field17&quot; name=&quot;field17&quot; class=&quot;fieldX&quot; style=&quot;top: 466px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field18 --&gt;
+            &lt;input id=&quot;field18&quot; name=&quot;field18&quot; class=&quot;fieldX&quot; style=&quot;top: 543px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field19 --&gt;
+            &lt;input id=&quot;field19&quot; name=&quot;field19&quot; class=&quot;fieldX&quot; style=&quot;top: 565px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field20 --&gt;
+            &lt;input id=&quot;field20&quot; name=&quot;field20&quot; class=&quot;fieldX&quot; style=&quot;top: 586px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field21 --&gt;
+            &lt;input id=&quot;field21&quot; name=&quot;field21&quot; class=&quot;fieldX&quot; style=&quot;top: 608px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field22 --&gt;
+            &lt;input id=&quot;field22&quot; name=&quot;field22&quot; class=&quot;fieldX&quot; style=&quot;top: 630px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field23 --&gt;
+            &lt;input id=&quot;field23&quot; name=&quot;field23&quot; class=&quot;fieldX&quot; style=&quot;top: 652px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field24 --&gt;
+            &lt;input id=&quot;field24&quot; name=&quot;field24&quot; class=&quot;fieldX&quot; style=&quot;top: 674px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field25 --&gt;
+            &lt;input id=&quot;field25&quot; name=&quot;field25&quot; class=&quot;fieldX&quot; style=&quot;top: 696px; left: 700px; width: 23px;&quot;&gt;
+            &lt;!-- field26 --&gt;
+            &lt;input id=&quot;field26&quot; name=&quot;field26&quot; class=&quot;fieldX&quot; style=&quot;top: 746px; left: 232px; width: 23px;&quot;&gt;
+            &lt;!-- field27 --&gt;
+            &lt;input id=&quot;field27&quot; name=&quot;field27&quot; class=&quot;fieldX&quot; style=&quot;top: 770px; left: 232px; width: 23px;&quot;&gt;
+            &lt;!-- field28 --&gt;
+            &lt;input id=&quot;field28&quot; name=&quot;field28&quot; class=&quot;fieldX&quot; style=&quot;top: 792px; left: 232px; width: 23px;&quot;&gt;
+            &lt;!-- field29 --&gt;
+            &lt;input id=&quot;field29&quot; name=&quot;field29&quot; class=&quot;fieldX&quot; style=&quot;top: 816px; left: 232px; width: 23px;&quot;&gt;
+            &lt;!-- field30 --&gt;
+            &lt;input id=&quot;field30&quot; name=&quot;field30&quot; class=&quot;fieldX&quot; style=&quot;top: 838px; left: 232px; width: 23px;&quot;&gt;
+            &lt;!-- field31 --&gt;
+            &lt;input id=&quot;field31&quot; name=&quot;field31&quot; class=&quot;fieldX&quot; style=&quot;top: 860px; left: 232px; width: 23px;&quot;&gt;
+            &lt;!-- field32 --&gt;
+            &lt;input id=&quot;field32&quot; name=&quot;field32&quot; class=&quot;fieldX&quot; style=&quot;top: 882px; left: 232px; width: 23px;&quot;&gt;
+
+            &lt;!-- field33 --&gt;
+            &lt;input id=&quot;field33&quot; name=&quot;field33&quot; class=&quot;fieldCenter&quot; style=&quot;top: 746px; left: 265px; width: 145px;&quot;&gt;
+            &lt;!-- field34 --&gt;
+            &lt;input id=&quot;field34&quot; name=&quot;field34&quot; class=&quot;fieldCenter&quot; style=&quot;top: 770px; left: 265px; width: 145px;&quot;&gt;
+            &lt;!-- field35 --&gt;
+            &lt;input id=&quot;field35&quot; name=&quot;field35&quot; class=&quot;fieldCenter&quot; style=&quot;top: 792px; left: 265px; width: 145px;&quot;&gt;
+            &lt;!-- field36 --&gt;
+            &lt;input id=&quot;field36&quot; name=&quot;field36&quot; class=&quot;fieldCenter&quot; style=&quot;top: 816px; left: 265px; width: 145px;&quot;&gt;
+            &lt;!-- field37 --&gt;
+            &lt;input id=&quot;field37&quot; name=&quot;field37&quot; class=&quot;fieldCenter&quot; style=&quot;top: 838px; left: 265px; width: 145px;&quot;&gt;
+            &lt;!-- field38 --&gt;
+            &lt;input id=&quot;field38&quot; name=&quot;field38&quot; class=&quot;fieldCenter&quot; style=&quot;top: 860px; left: 265px; width: 145px;&quot;&gt;
+            &lt;!-- field39 --&gt;
+            &lt;input id=&quot;field39&quot; name=&quot;field39&quot; class=&quot;fieldCenter&quot; style=&quot;top: 882px; left: 265px; width: 145px;&quot;&gt;
+
+            &lt;!-- field40 --&gt;
+            &lt;input id=&quot;field40&quot; name=&quot;field40&quot; class=&quot;fieldCenter&quot; style=&quot;top: 746px; left: 420px; width: 120px;&quot;&gt;
+            &lt;!-- field41 --&gt;
+            &lt;input id=&quot;field41&quot; name=&quot;field41&quot; class=&quot;fieldCenter&quot; style=&quot;top: 770px; left: 420px; width: 120px;&quot;&gt;
+            &lt;!-- field42 --&gt;
+            &lt;input id=&quot;field42&quot; name=&quot;field42&quot; class=&quot;fieldCenter&quot; style=&quot;top: 792px; left: 420px; width: 120px;&quot;&gt;
+            &lt;!-- field43 --&gt;
+            &lt;input id=&quot;field43&quot; name=&quot;field43&quot; class=&quot;fieldCenter&quot; style=&quot;top: 816px; left: 420px; width: 120px;&quot;&gt;
+            &lt;!-- field44 --&gt;
+            &lt;input id=&quot;field44&quot; name=&quot;field44&quot; class=&quot;fieldCenter&quot; style=&quot;top: 838px; left: 420px; width: 120px;&quot;&gt;
+            &lt;!-- field45 --&gt;
+            &lt;input id=&quot;field45&quot; name=&quot;field45&quot; class=&quot;fieldCenter&quot; style=&quot;top: 860px; left: 420px; width: 120px;&quot;&gt;
+            &lt;!-- field46 --&gt;
+            &lt;input id=&quot;field46&quot; name=&quot;field46&quot; class=&quot;fieldCenter&quot; style=&quot;top: 882px; left: 420px; width: 120px;&quot;&gt;
+
+            &lt;!-- field47 --&gt;
+            &lt;input id=&quot;field47&quot; name=&quot;field47&quot; class=&quot;fieldCenter&quot; style=&quot;top: 746px; left: 550px; width: 170px;&quot;&gt;
+            &lt;!-- field48 --&gt;
+            &lt;input id=&quot;field48&quot; name=&quot;field48&quot; class=&quot;fieldCenter&quot; style=&quot;top: 770px; left: 550px; width: 170px;&quot;&gt;
+            &lt;!-- field49 --&gt;
+            &lt;input id=&quot;field49&quot; name=&quot;field49&quot; class=&quot;fieldCenter&quot; style=&quot;top: 792px; left: 550px; width: 170px;&quot;&gt;
+            &lt;!-- field50 --&gt;
+            &lt;input id=&quot;field50&quot; name=&quot;field50&quot; class=&quot;fieldCenter&quot; style=&quot;top: 816px; left: 550px; width: 170px;&quot;&gt;
+            &lt;!-- field51 --&gt;
+            &lt;input id=&quot;field51&quot; name=&quot;field51&quot; class=&quot;fieldCenter&quot; style=&quot;top: 838px; left: 550px; width: 170px;&quot;&gt;
+            &lt;!-- field52 --&gt;
+            &lt;input id=&quot;field52&quot; name=&quot;field52&quot; class=&quot;fieldCenter&quot; style=&quot;top: 860px; left: 550px; width: 170px;&quot;&gt;
+            &lt;!-- field53 --&gt;
+            &lt;input id=&quot;field53&quot; name=&quot;field53&quot; class=&quot;fieldCenter&quot; style=&quot;top: 882px; left: 550px; width: 170px;&quot;&gt;
+
+            &lt;textarea id=&quot;comments&quot; name=&quot;comments&quot; maxlength=&quot;220&quot; style=&quot;
+        position: absolute;
+        top: 950px;
+        left: 72px;
+        width: 650px;
+        height: 90px;
+        border: 1px solid black;
+        background: rgba(250, 235, 215, 0.5);
+        font-size: 12px;
+        font-weight: normal;
+        line-height: 14px;
+        padding: 4px;
+        resize: none;
+        overflow: hidden;
+        box-sizing: border-box;
+        text-indent: 0;
+    &quot;&gt;&lt;/textarea&gt;
+
+
+
+
+
+        &lt;/div&gt;
+
+    &lt;/div&gt;
+
+    &lt;button class=&quot;btn&quot; onclick=&quot;generatePDF()&quot;&gt;Generate PDF&lt;/button&gt;
+
+
+    &lt;script&gt;
+        function scaleForm() {
+            const container = document.getElementById(&#x27;form-container&#x27;);
+            const wrapper = document.getElementById(&#x27;form-wrapper&#x27;);
+
+            const scale = wrapper.clientWidth / 800;
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener(&#x27;load&#x27;, scaleForm);
+        window.addEventListener(&#x27;resize&#x27;, scaleForm);
+
+        function generatePDF() {
+
+            const data = {
+
+                operator: document.getElementById(&#x27;operator&#x27;).value,
+                date: document.getElementById(&#x27;date&#x27;).value,
+                size: document.getElementById(&#x27;size&#x27;).value,
+                serialNumber: document.getElementById(&#x27;serialNumber&#x27;).value,
+                hourStart: document.getElementById(&#x27;hourStart&#x27;).value,
+                hourEnd: document.getElementById(&#x27;hourEnd&#x27;).value,
+
+                field1: document.getElementById(&#x27;field1&#x27;).value,
+                field2: document.getElementById(&#x27;field2&#x27;).value,
+                field3: document.getElementById(&#x27;field3&#x27;).value,
+                field4: document.getElementById(&#x27;field4&#x27;).value,
+                field5: document.getElementById(&#x27;field5&#x27;).value,
+                field6: document.getElementById(&#x27;field6&#x27;).value,
+                field7: document.getElementById(&#x27;field7&#x27;).value,
+                field8: document.getElementById(&#x27;field8&#x27;).value,
+                field9: document.getElementById(&#x27;field9&#x27;).value,
+                field10: document.getElementById(&#x27;field10&#x27;).value,
+                field11: document.getElementById(&#x27;field11&#x27;).value,
+                field12: document.getElementById(&#x27;field12&#x27;).value,
+                field13: document.getElementById(&#x27;field13&#x27;).value,
+                field14: document.getElementById(&#x27;field14&#x27;).value,
+                field15: document.getElementById(&#x27;field15&#x27;).value,
+                field16: document.getElementById(&#x27;field16&#x27;).value,
+                field17: document.getElementById(&#x27;field17&#x27;).value,
+                field18: document.getElementById(&#x27;field18&#x27;).value,
+                field19: document.getElementById(&#x27;field19&#x27;).value,
+                field20: document.getElementById(&#x27;field20&#x27;).value,
+                field21: document.getElementById(&#x27;field21&#x27;).value,
+                field22: document.getElementById(&#x27;field22&#x27;).value,
+                field23: document.getElementById(&#x27;field23&#x27;).value,
+                field24: document.getElementById(&#x27;field24&#x27;).value,
+                field25: document.getElementById(&#x27;field25&#x27;).value,
+                field26: document.getElementById(&#x27;field26&#x27;).value,
+                field27: document.getElementById(&#x27;field27&#x27;).value,
+                field28: document.getElementById(&#x27;field28&#x27;).value,
+                field29: document.getElementById(&#x27;field29&#x27;).value,
+                field30: document.getElementById(&#x27;field30&#x27;).value,
+                field31: document.getElementById(&#x27;field31&#x27;).value,
+                field32: document.getElementById(&#x27;field32&#x27;).value,
+                field33: document.getElementById(&#x27;field33&#x27;).value,
+                field34: document.getElementById(&#x27;field34&#x27;).value,
+                field35: document.getElementById(&#x27;field35&#x27;).value,
+                field36: document.getElementById(&#x27;field36&#x27;).value,
+                field37: document.getElementById(&#x27;field37&#x27;).value,
+                field38: document.getElementById(&#x27;field38&#x27;).value,
+                field39: document.getElementById(&#x27;field39&#x27;).value,
+                field40: document.getElementById(&#x27;field40&#x27;).value,
+                field41: document.getElementById(&#x27;field41&#x27;).value,
+                field42: document.getElementById(&#x27;field42&#x27;).value,
+                field43: document.getElementById(&#x27;field43&#x27;).value,
+                field44: document.getElementById(&#x27;field44&#x27;).value,
+                field45: document.getElementById(&#x27;field45&#x27;).value,
+                field46: document.getElementById(&#x27;field46&#x27;).value,
+                field47: document.getElementById(&#x27;field47&#x27;).value,
+                field48: document.getElementById(&#x27;field48&#x27;).value,
+                field49: document.getElementById(&#x27;field49&#x27;).value,
+                field50: document.getElementById(&#x27;field50&#x27;).value,
+                field51: document.getElementById(&#x27;field51&#x27;).value,
+                field52: document.getElementById(&#x27;field52&#x27;).value,
+                field53: document.getElementById(&#x27;field53&#x27;).value,
+                comments: document.getElementById(&#x27;comments&#x27;).value,
+            };
+
+            console.log(&quot;Sending data:&quot;, data);
+
+            fetch(window.location.origin + &#x27;/inspection/pdf&#x27;, {
+                method: &#x27;POST&#x27;,
+                headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; },
+                body: JSON.stringify(data)
+            })
+                .then(res =&gt; {
+                    if (!res.ok) throw new Error(&quot;Server error&quot;);
+                    return res.blob();
+                })
+                .then(blob =&gt; {
+                    const url = window.URL.createObjectURL(blob);
+
+                    // ✅ descarga compatible con celular
+                    const a = document.createElement(&#x27;a&#x27;);
+                    a.href = url;
+                    a.download = &#x27;inspection.pdf&#x27;;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                })
+                .catch(err =&gt; {
+                    console.error(&quot;Error:&quot;, err);
+                    alert(&quot;Error generating PDF&quot;);
+                });
+        }
+
+        document.getElementById(&#x27;form-container&#x27;).addEventListener(&#x27;click&#x27;, function (e) {
+
+            const rect = this.getBoundingClientRect();
+
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            console.log(&quot;HTML CLICK → X:&quot;, Math.round(x), &quot;Y:&quot;, Math.round(y));
+
+        });
+
+        document.addEventListener(&quot;DOMContentLoaded&quot;, function () {
+
+            const fields = document.querySelectorAll(&quot;.fieldX&quot;);
+
+            fields.forEach(field =&gt; {
+
+                // evita escribir manualmente
+                field.readOnly = true;
+
+                // cursor tipo botón
+                field.style.cursor = &quot;pointer&quot;;
+
+                // click desktop + tap mobile
+                field.addEventListener(&quot;click&quot;, function () {
+
+                    // toggle X
+                    if (field.value === &quot;X&quot;) {
+                        field.value = &quot;&quot;;
+                    } else {
+                        field.value = &quot;X&quot;;
+                    }
+
+                });
+
+            });
+
+        });
+
+        
+const comments = document.getElementById(&#x27;comments&#x27;);
+
+comments.addEventListener(&#x27;input&#x27;, function () {
+
+    while (comments.scrollHeight &gt; comments.clientHeight) {
+        comments.value = comments.value.slice(0, -1);
+    }
+
+});
+    &lt;/script&gt;
+
+
+
+&lt;/body&gt;
+
+&lt;/html&gt;
+</code></pre>
+<h2>public/login.html</h2>
+<pre><code>
+&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;es&quot;&gt;
+
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+    &lt;title&gt;Banglabash WorkFlow - Login&lt;/title&gt;
+    &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; href=&quot;/images/logoLogin.png?v=3&quot;&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.gstatic.com&quot; crossorigin&gt;
+    &lt;link href=&quot;https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap&quot; rel=&quot;stylesheet&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;style.css&quot;&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css&quot;&gt;
+    &lt;style&gt;
+        .auth-container {
+            max-width: 400px;
+            margin: 4rem auto;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .auth-container h2 {
+            margin-bottom: 1.5rem;
+            color: var(--text-color);
+        }
+
+        .auth-form .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        .auth-form .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .auth-form .form-group input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .auth-form .form-group input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+        }
+
+        .auth-toggle {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .auth-toggle a {
+            color: var(--primary-color);
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .auth-toggle a:hover {
+            color: var(--secondary-color);
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+    &lt;div class=&quot;background-blobs&quot;&gt;
+        &lt;div class=&quot;blob blob-1&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-2&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-3&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;container&quot;&gt;
+        &lt;header&gt;
+            &lt;h1&gt;&lt;i class=&quot;fa-solid fa-clock&quot;&gt;&lt;/i&gt;Banglabash WorkFlow&lt;/h1&gt;
+            &lt;p&gt;Manage your Time&lt;/p&gt;
+        &lt;/header&gt;
+
+        &lt;main&gt;
+            &lt;section class=&quot;auth-container card glass&quot;&gt;
+                &lt;h2 id=&quot;auth-title&quot;&gt;Login&lt;/h2&gt;
+                &lt;form id=&quot;auth-form&quot; class=&quot;auth-form&quot;&gt;
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;username&quot;&gt;Username&lt;/label&gt;
+                        &lt;input type=&quot;text&quot; id=&quot;username&quot; required autocomplete=&quot;username&quot;&gt;
+                    &lt;/div&gt;
+                    &lt;div class=&quot;form-group&quot;&gt;
+                        &lt;label for=&quot;password&quot;&gt;Password&lt;/label&gt;
+                        &lt;input type=&quot;password&quot; id=&quot;password&quot; required autocomplete=&quot;current-password&quot;&gt;
+                    &lt;/div&gt;
+                    &lt;button type=&quot;submit&quot; class=&quot;btn-primary&quot; id=&quot;auth-submit&quot;&gt;
+                        &lt;i class=&quot;fa-solid fa-sign-in-alt&quot;&gt;&lt;/i&gt; Login
+                    &lt;/button&gt;
+                    &lt;div id=&quot;auth-error&quot; class=&quot;error-msg&quot; style=&quot;margin-top: 1rem;&quot;&gt;&lt;/div&gt;
+                &lt;/form&gt;
+                &lt;div class=&quot;auth-toggle&quot;&gt;
+                    &lt;span id=&quot;auth-toggle-text&quot;&gt;Don&#x27;t have an account?&lt;/span&gt;
+                    &lt;a id=&quot;auth-toggle-link&quot;&gt;Sign Up&lt;/a&gt;
+                &lt;/div&gt;
+            &lt;/section&gt;
+        &lt;/main&gt;
+    &lt;/div&gt;
+
+    &lt;script src=&quot;login.js&quot;&gt;&lt;/script&gt;
+&lt;/body&gt;
+
+&lt;/html&gt;
+</code></pre>
+<h2>public/login.js</h2>
+<pre><code>
+document.addEventListener(&#x27;DOMContentLoaded&#x27;, () =&gt; {
+    const authForm = document.getElementById(&#x27;auth-form&#x27;);
+    const usernameInput = document.getElementById(&#x27;username&#x27;);
+    const passwordInput = document.getElementById(&#x27;password&#x27;);
+    const authTitle = document.getElementById(&#x27;auth-title&#x27;);
+    const authSubmit = document.getElementById(&#x27;auth-submit&#x27;);
+    const authToggleText = document.getElementById(&#x27;auth-toggle-text&#x27;);
+    const authToggleLink = document.getElementById(&#x27;auth-toggle-link&#x27;);
+    const authError = document.getElementById(&#x27;auth-error&#x27;);
+
+    let isLogin = true;
+
+    // Check if user is already logged in
+    const token = localStorage.getItem(&#x27;token&#x27;);
+    const role = localStorage.getItem(&#x27;role&#x27;);
+    if (token) {
+        if (role === &#x27;admin&#x27;) {
+            window.location.href = &#x27;admin.html&#x27;;
+        } else {
+            window.location.href = &#x27;menu.html&#x27;;
+        }
+    }
+
+    authToggleLink.addEventListener(&#x27;click&#x27;, () =&gt; {
+        isLogin = !isLogin;
+        authTitle.textContent = isLogin ? &#x27;Login&#x27; : &#x27;Registration&#x27;;
+        authSubmit.innerHTML = isLogin ? &#x27;&lt;i class=&quot;fa-solid fa-sign-in-alt&quot;&gt;&lt;/i&gt; Login&#x27; : &#x27;&lt;i class=&quot;fa-solid fa-user-plus&quot;&gt;&lt;/i&gt; Sign Up&#x27;;
+        authToggleText.textContent = isLogin ? &#x27;Don\&#x27;t have an account?&#x27; : &#x27;Already have an account?&#x27;;
+        authToggleLink.textContent = isLogin ? &#x27;Sign Up&#x27; : &#x27;Login&#x27;;
+        authError.textContent = &#x27;&#x27;;
+    });
+
+    authForm.addEventListener(&#x27;submit&#x27;, async (e) =&gt; {
+        e.preventDefault();
+        authError.textContent = &#x27;&#x27;;
+
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        if (!username || !password) {
+            showError(&#x27;Please enter username and password&#x27;);
+            return;
+        }
+
+        const endpoint = isLogin ? &#x27;/api/auth/login&#x27; : &#x27;/api/auth/register&#x27;;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: &#x27;POST&#x27;,
+                headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                if (isLogin) {
+                    localStorage.setItem(&#x27;token&#x27;, data.token);
+                    localStorage.setItem(&#x27;username&#x27;, username);
+                    if (data.role) {
+                        localStorage.setItem(&#x27;role&#x27;, data.role);
+                    } else {
+                        localStorage.setItem(&#x27;role&#x27;, &#x27;user&#x27;);
+                    }
+
+                    if (data.role === &#x27;admin&#x27;) {
+                        window.location.href = &#x27;admin.html&#x27;;
+                    } else {
+                        window.location.href = &#x27;menu.html&#x27;;
+                    }
+                } else {
+                    // Registration successful, auto-login or switch to login
+                    isLogin = true;
+                    authTitle.textContent = &#x27;Login&#x27;;
+                    authSubmit.innerHTML = &#x27;&lt;i class=&quot;fa-solid fa-sign-in-alt&quot;&gt;&lt;/i&gt; Login&#x27;;
+                    authToggleText.textContent = &#x27;Don\&#x27;t have an account?&#x27;;
+                    authToggleLink.textContent = &#x27;Sign Up&#x27;;
+                    usernameInput.value = &#x27;&#x27;;
+                    passwordInput.value = &#x27;&#x27;;
+                    showError(&#x27;Registration successful. Please log in.&#x27;, &#x27;success&#x27;);
+                }
+            } else {
+                showError(data.message || &#x27;Authentication error&#x27;);
+            }
+        } catch (error) {
+            console.error(&#x27;Auth error:&#x27;, error);
+            showError(&#x27;Connection error with the server&#x27;);
+        }
+    });
+
+    function showError(msg, type = &#x27;error&#x27;) {
+        authError.textContent = msg;
+        authError.style.color = type === &#x27;error&#x27; ? &#x27;var(--danger-color)&#x27; : &#x27;var(--success-color, #10b981)&#x27;;
+        setTimeout(() =&gt; {
+            authError.textContent = &#x27;&#x27;;
+        }, 4000);
+    }
+});
+
+</code></pre>
+<h2>public/menu.html</h2>
+<pre><code>
+&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+    &lt;title&gt;Banglabash WorkFlow&lt;/title&gt;
+    &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; href=&quot;/images/logoLogin.png?v=3&quot;&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;&gt;
+    &lt;link rel=&quot;preconnect&quot; href=&quot;https://fonts.gstatic.com&quot; crossorigin&gt;
+
+    &lt;link href=&quot;https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&amp;display=swap&quot; rel=&quot;stylesheet&quot;&gt;
+
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;style.css&quot;&gt;
+
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css&quot;&gt;
+
+    &lt;style&gt;
+        .menu-grid {
+            margin-top: 3rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .menu-card {
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .menu-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start !important;
+                gap: 1rem;
+            }
+
+            header h1 {
+                font-size: 1.8rem;
+            }
+
+            .user-actions {
+                width: 100%;
+            }
+
+            .user-actions button {
+                width: 100%;
+            }
+
+            .menu-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+                margin-top: 1.5rem;
+            }
+
+            .menu-card {
+                padding: 1.5rem;
+            }
+
+            .menu-icon {
+                font-size: 3rem;
+            }
+
+            .menu-card h2 {
+                font-size: 1.4rem;
+            }
+
+            .menu-card p {
+                font-size: 0.95rem;
+            }
+
+            .menu-card button {
+                width: 100%;
+            }
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div class=&quot;background-blobs&quot;&gt;
+        &lt;div class=&quot;blob blob-1&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-2&quot;&gt;&lt;/div&gt;
+        &lt;div class=&quot;blob blob-3&quot;&gt;&lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;container&quot;&gt;
+
+        &lt;header style=&quot;display:flex; justify-content:space-between; align-items:center; width:100%;&quot;&gt;
+
+            &lt;div&gt;
+                &lt;h1&gt;
+                    &lt;i class=&quot;fa-solid fa-layer-group&quot;&gt;&lt;/i&gt;
+                    Banglabash WorkFlow
+                &lt;/h1&gt;
+
+                &lt;p&gt;Select an option&lt;/p&gt;
+            &lt;/div&gt;
+
+            &lt;div class=&quot;user-actions&quot; style=&quot;display:flex; gap:1rem;&quot;&gt;
+
+                &lt;button id=&quot;btn-logout&quot; class=&quot;btn-primary&quot; style=&quot;background: var(--danger-color, #ef4444);
+                           border-color: var(--danger-color, #ef4444);
+                           font-size: 0.9rem;
+                           padding: 0.5rem 1rem;&quot;&gt;
+
+                    &lt;i class=&quot;fa-solid fa-sign-out-alt&quot;&gt;&lt;/i&gt;
+                    Logout
+                &lt;/button&gt;
+
+            &lt;/div&gt;
+
+        &lt;/header&gt;
+
+        &lt;main&gt;
+
+            &lt;section class=&quot;menu-grid&quot;&gt;
+
+    &lt;div class=&quot;card glass menu-card&quot; onclick=&quot;window.location.href=&#x27;index.html&#x27;&quot;&gt;
+        &lt;div class=&quot;menu-icon&quot;&gt;
+            &lt;i class=&quot;fa-solid fa-clock&quot;&gt;&lt;/i&gt;
+        &lt;/div&gt;
+
+        &lt;h2&gt;Hours&lt;/h2&gt;
+        &lt;p&gt;Manage work and practicum hours&lt;/p&gt;
+
+        &lt;button class=&quot;btn-primary&quot; style=&quot;margin-top:1rem;&quot;&gt;
+            Open Hours
+        &lt;/button&gt;
+    &lt;/div&gt;
+
+    &lt;div class=&quot;card glass menu-card&quot; onclick=&quot;window.location.href=&#x27;/inspection&#x27;&quot;&gt;
+        &lt;div class=&quot;menu-icon&quot;&gt;
+            &lt;i class=&quot;fa-solid fa-clipboard-check&quot;&gt;&lt;/i&gt;
+        &lt;/div&gt;
+
+        &lt;h2&gt;Inspection Form&lt;/h2&gt;
+        &lt;p&gt;Open equipment inspection sheet&lt;/p&gt;
+
+        &lt;button class=&quot;btn-primary&quot; style=&quot;margin-top:1rem;&quot;&gt;
+            Open Inspection
+        &lt;/button&gt;
+
+        
+    &lt;/div&gt;
+
+    &lt;div class=&quot;card glass menu-card&quot; onclick=&quot;window.location.href=&#x27;summary.html&#x27;&quot;&gt;
+        &lt;div class=&quot;menu-icon&quot;&gt;
+            &lt;i class=&quot;fa-solid fa-business-time&quot;&gt;&lt;/i&gt;
+        &lt;/div&gt;
+
+        &lt;h2&gt;Summary Work Hours&lt;/h2&gt;
+        &lt;p&gt;View your work hours summary&lt;/p&gt;
+
+        &lt;button class=&quot;btn-primary&quot; style=&quot;margin-top:1rem;&quot;&gt;
+            Open Summary
+        &lt;/button&gt;
+
+        
+    &lt;/div&gt;
+
+&lt;/section&gt;
+
+        &lt;/main&gt;
+
+    &lt;/div&gt;
+
+    &lt;script&gt;
+
+        const token = localStorage.getItem(&#x27;token&#x27;);
+
+        if (!token) {
+            window.location.href = &#x27;login.html&#x27;;
+        }
+
+        document.getElementById(&#x27;btn-logout&#x27;)
+            .addEventListener(&#x27;click&#x27;, () =&gt; {
+
+                localStorage.removeItem(&#x27;token&#x27;);
+                localStorage.removeItem(&#x27;username&#x27;);
+                localStorage.removeItem(&#x27;role&#x27;);
+
+                window.location.href = &#x27;login.html&#x27;;
+
+            });
+
+    &lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;
+</code></pre>
+<h2>public/script.js</h2>
+<pre><code>
+document.addEventListener(&#x27;DOMContentLoaded&#x27;, () =&gt; {
+    const workForm = document.getElementById(&#x27;work-form&#x27;);
+    const entriesList = document.getElementById(&#x27;entries-list&#x27;);
+    const totalTodayEl = document.getElementById(&#x27;total-today&#x27;);
+    const totalWeekEl = document.getElementById(&#x27;total-week&#x27;);
+    const formError = document.getElementById(&#x27;form-error&#x27;);
+    const submitBtn = workForm.querySelector(&#x27;button[type=&quot;submit&quot;]&#x27;);
+
+    let editingId = null;
+    let allEntries = [];
+    let currentTab = &#x27;work&#x27;;
+
+    const tabWork = document.getElementById(&#x27;tab-work&#x27;);
+    const tabPracticum = document.getElementById(&#x27;tab-practicum&#x27;);
+
+    if (tabWork &amp;&amp; tabPracticum) {
+        tabWork.addEventListener(&#x27;click&#x27;, () =&gt; {
+            currentTab = &#x27;work&#x27;;
+            tabWork.classList.add(&#x27;active&#x27;);
+            tabWork.style.background = &#x27;var(--primary-color)&#x27;;
+            tabWork.style.color = &#x27;white&#x27;;
+            tabPracticum.classList.remove(&#x27;active&#x27;);
+            tabPracticum.style.background = &#x27;transparent&#x27;;
+            tabPracticum.style.color = &#x27;var(--text-muted)&#x27;;
+            renderEntries(allEntries);
+            updateDashboard(allEntries);
+        });
+
+        tabPracticum.addEventListener(&#x27;click&#x27;, () =&gt; {
+            currentTab = &#x27;practicum&#x27;;
+            tabPracticum.classList.add(&#x27;active&#x27;);
+            tabPracticum.style.background = &#x27;var(--primary-color)&#x27;;
+            tabPracticum.style.color = &#x27;white&#x27;;
+            tabWork.classList.remove(&#x27;active&#x27;);
+            tabWork.style.background = &#x27;transparent&#x27;;
+            tabWork.style.color = &#x27;var(--text-muted)&#x27;;
+            renderEntries(allEntries);
+            updateDashboard(allEntries);
+        });
+    }
+
+    const radioWork = document.querySelector(&#x27;input[value=&quot;work&quot;]&#x27;);
+    const radioPracticum = document.querySelector(&#x27;input[value=&quot;practicum&quot;]&#x27;);
+    const cardWork = document.getElementById(&#x27;card-work&#x27;);
+    const cardPracticum = document.getElementById(&#x27;card-practicum&#x27;);
+
+    if (radioWork &amp;&amp; radioPracticum) {
+        document.querySelectorAll(&#x27;input[name=&quot;recordType&quot;]&#x27;).forEach(radio =&gt; {
+            radio.addEventListener(&#x27;change&#x27;, (e) =&gt; {
+                if (e.target.value === &#x27;work&#x27;) {
+                    cardWork.style.borderColor = &#x27;var(--primary-color)&#x27;;
+                    cardPracticum.style.borderColor = &#x27;transparent&#x27;;
+                } else {
+                    cardPracticum.style.borderColor = &#x27;var(--primary-color)&#x27;;
+                    cardWork.style.borderColor = &#x27;transparent&#x27;;
+                }
+            });
+        });
+    }
+
+    const dayOffToggle = document.getElementById(&#x27;day-off-toggle&#x27;);
+    const startTimeInput = document.getElementById(&#x27;start-time&#x27;);
+    const endTimeInput = document.getElementById(&#x27;end-time&#x27;);
+    const descInput = document.getElementById(&#x27;description&#x27;);
+
+    if (dayOffToggle) {
+        dayOffToggle.addEventListener(&#x27;change&#x27;, (e) =&gt; {
+            if (e.target.checked) {
+                startTimeInput.value = &#x27;00:00&#x27;;
+                endTimeInput.value = &#x27;00:00&#x27;;
+                descInput.value = &#x27;Day Off&#x27;;
+                startTimeInput.disabled = true;
+                endTimeInput.disabled = true;
+            } else {
+                startTimeInput.value = &#x27;&#x27;;
+                endTimeInput.value = &#x27;&#x27;;
+                descInput.value = &#x27;CornerStone&#x27;;
+                startTimeInput.disabled = false;
+                endTimeInput.disabled = false;
+            }
+        });
+    }
+
+    // Check for token before anything else
+    const token = localStorage.getItem(&#x27;token&#x27;);
+    if (!token) {
+        window.location.href = &#x27;login.html&#x27;;
+        return;
+    }
+
+    const authHeaders = {
+        &#x27;Content-Type&#x27;: &#x27;application/json&#x27;,
+        &#x27;Authorization&#x27;: `Bearer ${token}`
+    };
+
+    // Logout logic
+    document.getElementById(&#x27;btn-logout&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+        localStorage.removeItem(&#x27;token&#x27;);
+        window.location.href = &#x27;login.html&#x27;;
+    });
+
+    // Password modal logic
+    const modal = document.getElementById(&#x27;password-modal&#x27;);
+    document.getElementById(&#x27;btn-change-password&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+        modal.style.display = &#x27;flex&#x27;;
+    });
+
+    document.getElementById(&#x27;close-modal&#x27;).addEventListener(&#x27;click&#x27;, () =&gt; {
+        modal.style.display = &#x27;none&#x27;;
+        document.getElementById(&#x27;password-form&#x27;).reset();
+        document.getElementById(&#x27;password-error&#x27;).textContent = &#x27;&#x27;;
+    });
+
+    document.getElementById(&#x27;password-form&#x27;).addEventListener(&#x27;submit&#x27;, async (e) =&gt; {
+        e.preventDefault();
+        const oldPassword = document.getElementById(&#x27;old-password&#x27;).value;
+        const newPassword = document.getElementById(&#x27;new-password&#x27;).value;
+        const errEl = document.getElementById(&#x27;password-error&#x27;);
+
+        try {
+            const res = await fetch(&#x27;/api/auth/password&#x27;, {
+                method: &#x27;PUT&#x27;,
+                headers: authHeaders,
+                body: JSON.stringify({ oldPassword, newPassword })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                errEl.style.color = &#x27;#10b981&#x27;;
+                errEl.textContent = &#x27;Password updated!&#x27;;
+                setTimeout(() =&gt; {
+                    modal.style.display = &#x27;none&#x27;;
+                    document.getElementById(&#x27;password-form&#x27;).reset();
+                    errEl.textContent = &#x27;&#x27;;
+                }, 2000);
+            } else {
+                errEl.style.color = &#x27;#ef4444&#x27;;
+                errEl.textContent = data.message || &#x27;Error updating password&#x27;;
+            }
+        } catch (e) {
+            errEl.style.color = &#x27;#ef4444&#x27;;
+            errEl.textContent = &#x27;Connection error&#x27;;
+        }
+    });
+
+    // Admin check
+    const role = localStorage.getItem(&#x27;role&#x27;) || &#x27;user&#x27;;
+    if (role === &#x27;admin&#x27;) {
+        const adminBtn = document.getElementById(&#x27;btn-admin-panel&#x27;);
+        if (adminBtn) {
+            adminBtn.style.display = &#x27;block&#x27;;
+            adminBtn.addEventListener(&#x27;click&#x27;, () =&gt; {
+                window.location.href = &#x27;admin.html&#x27;;
+            });
+        }
+    }
+
+    // Set default date to today
+    resetForm();
+
+    // Fetch and display entries on load
+    fetchEntries();
+
+    workForm.addEventListener(&#x27;submit&#x27;, async (e) =&gt; {
+        e.preventDefault();
+        formError.textContent = &#x27;&#x27;;
+
+        const date = document.getElementById(&#x27;date&#x27;).value;
+        const startTime = document.getElementById(&#x27;start-time&#x27;).value;
+        const endTime = document.getElementById(&#x27;end-time&#x27;).value;
+        const description = document.getElementById(&#x27;description&#x27;).value;
+        const recordType = document.querySelector(&#x27;input[name=&quot;recordType&quot;]:checked&#x27;).value;
+
+        const isDayOff = document.getElementById(&#x27;day-off-toggle&#x27;) ? document.getElementById(&#x27;day-off-toggle&#x27;).checked : false;
+
+        if (!date || !startTime || !endTime) {
+            showError(&#x27;Por favor completa todos los campos requeridos&#x27;);
+            return;
+        }
+
+        if (!isDayOff &amp;&amp; startTime &gt;= endTime) {
+            showError(&#x27;La hora de fin debe ser posterior a la de inicio&#x27;);
+            return;
+        }
+
+        const entryData = { date, startTime, endTime, description, recordType };
+
+        try {
+            let response;
+            if (editingId) {
+                response = await fetch(`/api/hours/${editingId}`, {
+                    method: &#x27;PUT&#x27;,
+                    headers: authHeaders,
+                    body: JSON.stringify(entryData)
+                });
+            } else {
+                response = await fetch(&#x27;/api/hours&#x27;, {
+                    method: &#x27;POST&#x27;,
+                    headers: authHeaders,
+                    body: JSON.stringify(entryData)
+                });
+            }
+
+            if (response.ok) {
+                resetForm();
+                fetchEntries();
+            } else {
+                showError(&#x27;Error al guardar la entrada&#x27;);
+            }
+        } catch (error) {
+            console.error(&#x27;Error:&#x27;, error);
+            showError(&#x27;Error de conexión con el servidor&#x27;);
+        }
+    });
+
+    async function fetchEntries() {
+        try {
+            const response = await fetch(&#x27;/api/hours&#x27;, { headers: authHeaders });
+            if (response.status === 401) {
+                localStorage.removeItem(&#x27;token&#x27;);
+                window.location.href = &#x27;login.html&#x27;;
+                return;
+            }
+            const entries = await response.json();
+            allEntries = entries;
+            renderEntries(entries);
+            updateDashboard(entries);
+        } catch (error) {
+            console.error(&#x27;Error fetching entries:&#x27;, error);
+            entriesList.innerHTML = &#x27;&lt;p class=&quot;error-msg&quot;&gt;Error al cargar los datos&lt;/p&gt;&#x27;;
+        }
+    }
+
+    function renderEntries(entries) {
+        entriesList.innerHTML = &#x27;&#x27;;
+
+        const filteredEntries = entries.filter(e =&gt; (e.recordType || &#x27;work&#x27;) === currentTab);
+
+        if (filteredEntries.length === 0) {
+            entriesList.innerHTML = `
+                &lt;div class=&quot;empty-state&quot;&gt;
+                    &lt;i class=&quot;fa-regular fa-calendar-xmark&quot;&gt;&lt;/i&gt;
+                    &lt;p&gt;No hay registros aún&lt;/p&gt;
+                &lt;/div&gt;`;
+            return;
+        }
+
+        // Sort entries by date desc, then by start time desc
+        filteredEntries.sort((a, b) =&gt; {
+            const dateA = new Date(`${a.date}T${a.startTime}`);
+            const dateB = new Date(`${b.date}T${b.startTime}`);
+            return dateB - dateA;
+        });
+
+        const weeks = {};
+
+        filteredEntries.forEach(entry =&gt; {
+            const date = new Date(entry.date + &#x27;T00:00:00&#x27;);
+            const weekStart = getStartOfWeek(date);
+            const weekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, &#x27;0&#x27;)}-${String(weekStart.getDate()).padStart(2, &#x27;0&#x27;)}`;
+
+            if (!weeks[weekKey]) {
+                weeks[weekKey] = {
+                    start: weekStart,
+                    entries: [],
+                    totalMinutes: 0
+                };
+            }
+
+            const duration = calculateDuration(entry.startTime, entry.endTime);
+            weeks[weekKey].entries.push(entry);
+            weeks[weekKey].totalMinutes += duration;
+        });
+
+        // Sort weeks desc
+        const sortedWeeks = Object.keys(weeks).sort((a, b) =&gt; new Date(b) - new Date(a));
+
+        sortedWeeks.forEach(weekKey =&gt; {
+            const week = weeks[weekKey];
+            const weekCard = document.createElement(&#x27;div&#x27;);
+            weekCard.className = &#x27;week-card glass&#x27;; // Reuse glass effect but specific class
+
+            const weekEnd = new Date(week.start);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+
+            const dateRange = `${formatDateShort(week.start)} - ${formatDateShort(weekEnd)}`;
+
+            let entriesHtml = &#x27;&#x27;;
+            week.entries.forEach(entry =&gt; {
+                const duration = calculateDuration(entry.startTime, entry.endTime);
+                entriesHtml += `
+                    &lt;div class=&quot;day-row&quot;&gt;
+                        &lt;div class=&quot;day-info&quot;&gt;
+                            &lt;span class=&quot;day-date&quot;&gt;${formatDate(entry.date)}&lt;/span&gt;
+                            &lt;span class=&quot;day-time&quot;&gt;${entry.startTime} - ${entry.endTime}&lt;/span&gt;
+                            &lt;span class=&quot;day-desc&quot;&gt;${entry.description || &#x27;&#x27;}&lt;/span&gt;
+                        &lt;/div&gt;
+                        &lt;div class=&quot;day-actions&quot;&gt;
+                            &lt;span class=&quot;duration-pill&quot;&gt;${formatDuration(duration)}&lt;/span&gt;
+                            &lt;button class=&quot;btn-edit-mini&quot; onclick=&quot;editEntry(&#x27;${entry.id}&#x27;, &#x27;${entry.date}&#x27;, &#x27;${entry.startTime}&#x27;, &#x27;${entry.endTime}&#x27;, &#x27;${escapeHtml(entry.description || &#x27;&#x27;)}&#x27;, &#x27;${entry.recordType || &#x27;work&#x27;}&#x27;)&quot; title=&quot;Editar&quot;&gt;
+                                &lt;i class=&quot;fa-solid fa-pen&quot;&gt;&lt;/i&gt;
+                            &lt;/button&gt;
+                            &lt;button class=&quot;btn-delete-mini&quot; onclick=&quot;deleteEntry(&#x27;${entry.id}&#x27;)&quot; title=&quot;Eliminar&quot;&gt;
+                                &lt;i class=&quot;fa-solid fa-trash&quot;&gt;&lt;/i&gt;
+                            &lt;/button&gt;
+                        &lt;/div&gt;
+                    &lt;/div&gt;
+                `;
+            });
+
+            weekCard.innerHTML = `
+                &lt;div class=&quot;week-header&quot;&gt;
+                    &lt;h3&gt;Week: ${dateRange}&lt;/h3&gt;
+                    &lt;div style=&quot;display: flex; gap: 1rem; align-items: center;&quot;&gt;
+                        &lt;span class=&quot;week-total&quot;&gt;${formatDuration(week.totalMinutes)}&lt;/span&gt;
+                        &lt;button class=&quot;btn-copy-mini&quot; onclick=&quot;copyWeekToClipboard(&#x27;${weekKey}&#x27;)&quot; title=&quot;Copiar tabla para correo&quot;&gt;
+                            &lt;i class=&quot;fa-solid fa-copy&quot;&gt;&lt;/i&gt;
+                        &lt;/button&gt;
+                    &lt;/div&gt;
+                &lt;/div&gt;
+                &lt;div class=&quot;week-entries&quot;&gt;
+                    ${entriesHtml}
+                &lt;/div&gt;
+            `;
+
+            entriesList.appendChild(weekCard);
+        });
+    }
+
+    function getStartOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    function formatDateShort(date) {
+        return date.toLocaleDateString(&#x27;en-US&#x27;, { day: &#x27;numeric&#x27;, month: &#x27;short&#x27; });
+    }
+
+    window.deleteEntry = async (id) =&gt; {
+        if (!confirm(&#x27;¿Estás seguro de eliminar esta entrada?&#x27;)) return;
+
+        try {
+            const response = await fetch(`/api/hours/${id}`, {
+                method: &#x27;DELETE&#x27;,
+                headers: authHeaders
+            });
+            if (response.ok) {
+                fetchEntries();
+            } else {
+                alert(&#x27;Error al eliminar la entrada&#x27;);
+            }
+        } catch (error) {
+            console.error(&#x27;Error deleting entry:&#x27;, error);
+        }
+    };
+
+    window.editEntry = (id, date, start, end, desc, recordType) =&gt; {
+        editingId = id;
+        document.getElementById(&#x27;date&#x27;).value = date;
+        document.getElementById(&#x27;start-time&#x27;).value = start;
+        document.getElementById(&#x27;end-time&#x27;).value = end;
+        document.getElementById(&#x27;description&#x27;).value = desc;
+
+        const type = recordType || &#x27;work&#x27;;
+        const radio = document.querySelector(`input[name=&quot;recordType&quot;][value=&quot;${type}&quot;]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event(&#x27;change&#x27;));
+        }
+
+        const toggle = document.getElementById(&#x27;day-off-toggle&#x27;);
+        if (toggle) {
+            if (desc === &#x27;Day Off&#x27; &amp;&amp; start === &#x27;00:00&#x27; &amp;&amp; end === &#x27;00:00&#x27;) {
+                toggle.checked = true;
+                document.getElementById(&#x27;start-time&#x27;).disabled = true;
+                document.getElementById(&#x27;end-time&#x27;).disabled = true;
+            } else {
+                toggle.checked = false;
+                document.getElementById(&#x27;start-time&#x27;).disabled = false;
+                document.getElementById(&#x27;end-time&#x27;).disabled = false;
+            }
+        }
+
+        submitBtn.innerHTML = &#x27;&lt;i class=&quot;fa-solid fa-save&quot;&gt;&lt;/i&gt; Update&#x27;;
+        submitBtn.classList.add(&#x27;btn-update&#x27;);
+
+        // Add cancel button if not exists
+        if (!document.getElementById(&#x27;btn-cancel&#x27;)) {
+            const cancelBtn = document.createElement(&#x27;button&#x27;);
+            cancelBtn.id = &#x27;btn-cancel&#x27;;
+            cancelBtn.type = &#x27;button&#x27;;
+            cancelBtn.className = &#x27;btn-secondary&#x27;;
+            cancelBtn.innerHTML = &#x27;&lt;i class=&quot;fa-solid fa-times&quot;&gt;&lt;/i&gt; Cancel&#x27;;
+            cancelBtn.onclick = resetForm;
+            workForm.appendChild(cancelBtn);
+        }
+
+        document.querySelector(&#x27;.input-section&#x27;).scrollIntoView({ behavior: &#x27;smooth&#x27; });
+    };
+
+    function resetForm() {
+        workForm.reset();
+        const d = new Date();
+        document.getElementById(&#x27;date&#x27;).value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, &#x27;0&#x27;)}-${String(d.getDate()).padStart(2, &#x27;0&#x27;)}`;
+        document.getElementById(&#x27;description&#x27;).value = &#x27;CornerStone&#x27;;
+        
+        const radio = document.querySelector(`input[name=&quot;recordType&quot;][value=&quot;${currentTab}&quot;]`);
+        if (radio) {
+            radio.checked = true;
+            radio.dispatchEvent(new Event(&#x27;change&#x27;));
+        }
+        
+        const toggle = document.getElementById(&#x27;day-off-toggle&#x27;);
+        if (toggle) {
+            toggle.checked = false;
+            document.getElementById(&#x27;start-time&#x27;).disabled = false;
+            document.getElementById(&#x27;end-time&#x27;).disabled = false;
+        }
+
+        editingId = null;
+        submitBtn.innerHTML = &#x27;&lt;i class=&quot;fa-solid fa-plus&quot;&gt;&lt;/i&gt; Add&#x27;;
+        submitBtn.classList.remove(&#x27;btn-update&#x27;);
+
+        const cancelBtn = document.getElementById(&#x27;btn-cancel&#x27;);
+        if (cancelBtn) cancelBtn.remove();
+    }
+
+    function escapeHtml(text) {
+        if (!text) return &#x27;&#x27;;
+        return text
+            .replace(/&amp;/g, &quot;&amp;amp;&quot;)
+            .replace(/&lt;/g, &quot;&amp;lt;&quot;)
+            .replace(/&gt;/g, &quot;&amp;gt;&quot;)
+            .replace(/&quot;/g, &quot;&amp;quot;&quot;)
+            .replace(/&#x27;/g, &quot;&amp;#039;&quot;);
+    }
+
+    function updateDashboard(entries) {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, &#x27;0&#x27;)}-${String(now.getDate()).padStart(2, &#x27;0&#x27;)}`;
+        let todayMinutes = 0;
+        let weekMinutes = 0;
+
+        const startOfWeek = getStartOfWeek(now);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(endOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        const filteredEntries = entries.filter(e =&gt; (e.recordType || &#x27;work&#x27;) === currentTab);
+
+        filteredEntries.forEach(entry =&gt; {
+            const duration = calculateDuration(entry.startTime, entry.endTime);
+
+            // Daily total
+            if (entry.date === today) {
+                todayMinutes += duration;
+            }
+
+            // Weekly total
+            const entryDate = new Date(entry.date + &#x27;T00:00:00&#x27;);
+            if (entryDate &gt;= startOfWeek &amp;&amp; entryDate &lt;= endOfWeek) {
+                weekMinutes += duration;
+            }
+        });
+
+        totalTodayEl.textContent = formatDuration(todayMinutes);
+        totalWeekEl.textContent = formatDuration(weekMinutes);
+    }
+
+    function calculateDuration(start, end) {
+        const [startH, startM] = start.split(&#x27;:&#x27;).map(Number);
+        const [endH, endM] = end.split(&#x27;:&#x27;).map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = endH * 60 + endM;
+        return endMinutes - startMinutes;
+    }
+
+    function formatDuration(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return `${h}h ${m}m`;
+    }
+
+    function formatDate(dateString) {
+        const options = { weekday: &#x27;short&#x27;, day: &#x27;numeric&#x27;, month: &#x27;short&#x27; };
+        // Validar y prevenir problemas de timezone agregando T00:00:00
+        const date = new Date(`${dateString}T00:00:00`);
+        return date.toLocaleDateString(&#x27;en-US&#x27;, options);
+    }
+
+    function showError(msg) {
+        formError.textContent = msg;
+        setTimeout(() =&gt; {
+            formError.textContent = &#x27;&#x27;;
+        }, 3000);
+    }
+
+    function formatTimeAMPM(time24) {
+        const [hour, minute] = time24.split(&#x27;:&#x27;);
+        let h = parseInt(hour, 10);
+        const ampm = h &gt;= 12 ? &#x27;PM&#x27; : &#x27;AM&#x27;;
+        h = h % 12 || 12;
+        return `${h}:${minute} ${ampm}`;
+    }
+
+    window.copyWeekToClipboard = async (weekKey) =&gt; {
+        try {
+            const sortedEntries = [...allEntries]
+                .filter(e =&gt; (e.recordType || &#x27;work&#x27;) === currentTab)
+                .sort((a, b) =&gt; {
+                    const dateA = new Date(`${a.date}T${a.startTime}`);
+                    const dateB = new Date(`${b.date}T${b.startTime}`);
+                    return dateA - dateB;
+                });
+
+            let weekEntries = [];
+            let totalMinutes = 0;
+
+            sortedEntries.forEach(entry =&gt; {
+                const date = new Date(entry.date + &#x27;T00:00:00&#x27;);
+                const weekStart = getStartOfWeek(date);
+                const currentWeekKey = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, &#x27;0&#x27;)}-${String(weekStart.getDate()).padStart(2, &#x27;0&#x27;)}`;
+
+                if (currentWeekKey === weekKey) {
+                    weekEntries.push(entry);
+                    totalMinutes += calculateDuration(entry.startTime, entry.endTime);
+                }
+            });
+
+            if (weekEntries.length === 0) return;
+
+            const weekStart = new Date(weekEntries[0].date + &#x27;T00:00:00&#x27;);
+            const weekStartObj = getStartOfWeek(weekStart);
+            const weekEndObj = new Date(weekStartObj);
+            weekEndObj.setDate(weekEndObj.getDate() + 6);
+            const dateRange = `${formatDateShort(weekStartObj)} - ${formatDateShort(weekEndObj)}`;
+
+            let textContent = `Hello, This is my TimeSheet :\n\n`;
+            textContent += `Hours Report: ${dateRange}\n\n`;
+            textContent += `Date\tStart\tEnd\tDescription\tDuration\n`;
+            textContent += `----------------------------------------------------------\n`;
+
+            let htmlContent = `
+                &lt;div style=&quot;font-family: Arial, sans-serif; color: #333;&quot;&gt;
+                    &lt;p style=&quot;font-size: 16px; margin-bottom: 20px;&quot;&gt;Hello, This is my TimeSheet:&lt;/p&gt;
+                    &lt;h2 style=&quot;color: #4f46e5;&quot;&gt;Hours Report: ${dateRange}&lt;/h2&gt;
+                    &lt;table style=&quot;border-collapse: collapse; width: 100%; max-width: 800px; text-align: left;&quot;&gt;
+                        &lt;thead&gt;
+                            &lt;tr style=&quot;background-color: #f3f4f6; color: #111;&quot;&gt;
+                                &lt;th style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;Date&lt;/th&gt;
+                                &lt;th style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;Start&lt;/th&gt;
+                                &lt;th style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;End&lt;/th&gt;
+                                &lt;th style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;Description&lt;/th&gt;
+                                &lt;th style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;Duration&lt;/th&gt;
+                            &lt;/tr&gt;
+                        &lt;/thead&gt;
+                        &lt;tbody&gt;
+            `;
+
+            weekEntries.forEach(entry =&gt; {
+                const duration = calculateDuration(entry.startTime, entry.endTime);
+                const durationStr = formatDuration(duration);
+                // We use en-US format to make the output match English convention
+                const entryDateObj = new Date(`${entry.date}T00:00:00`);
+                const dateStr = entryDateObj.toLocaleDateString(&#x27;en-US&#x27;, { weekday: &#x27;short&#x27;, day: &#x27;numeric&#x27;, month: &#x27;short&#x27; });
+                const startTime12 = formatTimeAMPM(entry.startTime);
+                const endTime12 = formatTimeAMPM(entry.endTime);
+                const descStr = entry.description || &#x27;&#x27;;
+
+                textContent += `${dateStr}\t${startTime12}\t${endTime12}\t${descStr}\t${durationStr}\n`;
+
+                htmlContent += `
+                    &lt;tr&gt;
+                        &lt;td style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;${dateStr}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;${startTime12}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;${endTime12}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;${escapeHtml(descStr)}&lt;/td&gt;
+                        &lt;td style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;${durationStr}&lt;/td&gt;
+                    &lt;/tr&gt;
+                `;
+            });
+
+            const totalDecimalHours = Number((totalMinutes / 60).toFixed(2)) + &#x27; hours&#x27;;
+
+            textContent += `----------------------------------------------------------\n`;
+            textContent += `Total weekly hours:\t\t\t\t${totalDecimalHours}\n`;
+
+            htmlContent += `
+                            &lt;tr style=&quot;background-color: #e5e7eb; font-weight: bold;&quot;&gt;
+                                &lt;td colspan=&quot;4&quot; style=&quot;padding: 10px; border: 1px solid #d1d5db; text-align: right;&quot;&gt;Total weekly hours:&lt;/td&gt;
+                                &lt;td style=&quot;padding: 10px; border: 1px solid #d1d5db;&quot;&gt;${totalDecimalHours}&lt;/td&gt;
+                            &lt;/tr&gt;
+                        &lt;/tbody&gt;
+                    &lt;/table&gt;
+                &lt;/div&gt;
+            `;
+
+            if (navigator.clipboard &amp;&amp; window.ClipboardItem) {
+                const textBlob = new Blob([textContent], { type: &#x27;text/plain&#x27; });
+                const htmlBlob = new Blob([htmlContent], { type: &#x27;text/html&#x27; });
+                const clipboardItem = new ClipboardItem({
+                    &#x27;text/plain&#x27;: textBlob,
+                    &#x27;text/html&#x27;: htmlBlob
+                });
+                await navigator.clipboard.write([clipboardItem]);
+            } else {
+                await navigator.clipboard.writeText(textContent);
+            }
+
+            const btn = document.querySelector(`button[onclick=&quot;copyWeekToClipboard(&#x27;${weekKey}&#x27;)&quot;]`);
+            if (btn) {
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = &#x27;&lt;i class=&quot;fa-solid fa-check&quot;&gt;&lt;/i&gt; Copiado&#x27;;
+                btn.style.background = &#x27;#10b981&#x27;;
+                btn.style.borderColor = &#x27;#10b981&#x27;;
+                btn.style.color = &#x27;#fff&#x27;;
+                setTimeout(() =&gt; {
+                    btn.innerHTML = originalHtml;
+                    btn.style.background = &#x27;&#x27;;
+                    btn.style.borderColor = &#x27;&#x27;;
+                    btn.style.color = &#x27;&#x27;;
+                }, 2000);
+            }
+
+        } catch (error) {
+            console.error(&#x27;Error copying to clipboard:&#x27;, error);
+            alert(&#x27;Error al copiar al portapapeles. Asegúrate de tener permisos o estar en un entorno seguro.&#x27;);
+        }
+    };
+});
+
+</code></pre>
+<h2>public/style.css</h2>
+<pre><code>
+:root {
+    --bg-color: #0f172a;
+    --text-color: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary-color: #6366f1;
+    --primary-hover: #4f46e5;
+    --accent-color: #38bdf8;
+    --glass-bg: rgba(30, 41, 59, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --danger-color: #ef4444;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: &#x27;Outfit&#x27;, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    min-height: 100vh;
+    overflow-x: hidden;
+    line-height: 1.6;
+}
+
+/* Background Blobs */
+.background-blobs {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    overflow: hidden;
+}
+
+.blob {
+    position: absolute;
+    filter: blur(80px);
+    opacity: 0.4;
+    border-radius: 50%;
+    animation: float 20s infinite ease-in-out;
+}
+
+.blob-1 {
+    top: -10%;
+    left: -10%;
+    width: 500px;
+    height: 500px;
+    background: var(--primary-color);
+    animation-delay: 0s;
+}
+
+.blob-2 {
+    bottom: -10%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    background: var(--accent-color);
+    animation-delay: -5s;
+}
+
+.blob-3 {
+    top: 40%;
+    left: 40%;
+    width: 300px;
+    height: 300px;
+    background: #a855f7;
+    animation-delay: -10s;
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    33% {
+        transform: translate(30px, -50px) scale(1.1);
+    }
+
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 3rem;
+    animation: fadeInDown 0.8s ease-out;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(135deg, #fff 0%, #cbd5e1 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+header p {
+    color: var(--text-muted);
+}
+
+/* Glassmorphism Components */
+.glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.glass:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Dashboard */
+.dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    animation: fadeInUp 0.8s ease-out 0.2s backwards;
+}
+
+.dashboard .card {
+    text-align: center;
+}
+
+.dashboard h3 {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.dashboard .stat {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent-color);
+}
+
+/* Form */
+.input-section {
+    margin-bottom: 2rem;
+    animation: fadeInUp 0.8s ease-out 0.4s backwards;
+}
+
+.input-section h2 {
+    margin-bottom: 1.5rem;
+    font-size: 1.5rem;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: white;
+    font-family: inherit;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+/* Customizing date/time inputs for webkit */
+input[type=&quot;date&quot;]::-webkit-calendar-picker-indicator,
+input[type=&quot;time&quot;]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+input[type=&quot;date&quot;]::-webkit-calendar-picker-indicator:hover,
+input[type=&quot;time&quot;]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+.btn-primary {
+    width: 100%;
+    padding: 0.875rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.error-msg {
+    color: var(--danger-color);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    height: 1.2rem;
+}
+
+/* Entries List */
+.entries-section {
+    animation: fadeInUp 0.8s ease-out 0.6s backwards;
+}
+
+.entries-section h2 {
+    margin-bottom: 1.5rem;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem 0;
+    color: var(--text-muted);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+.entry-card {
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.entry-card:hover {
+    background: rgba(15, 23, 42, 0.6);
+    transform: translateX(4px);
+}
+
+.entry-info h4 {
+    font-size: 1.1rem;
+    margin-bottom: 0.25rem;
+}
+
+.entry-info .meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.entry-info .meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.duration-badge {
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent-color);
+    padding: 0.4rem 0.8rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.btn-delete {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.5rem;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.btn-delete:hover {
+    color: var(--danger-color);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 600px) {
+    .container {
+        padding: 1rem;
+    }
+
+    .form-row,
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+
+    .entry-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .entry-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+/* Weekly View Styles */
+.week-card {
+    margin-bottom: 2rem;
+    padding: 0;
+    /* Override default glass padding if needed, or keep it */
+    overflow: hidden;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+.week-header {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.week-header h3 {
+    font-size: 1.1rem;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.week-total {
+    background: var(--primary-color);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.week-entries {
+    padding: 1rem;
+}
+
+.day-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background-color 0.2s;
+}
+
+.day-row:last-child {
+    border-bottom: none;
+}
+
+.day-row:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+}
+
+.day-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.day-date {
+    font-weight: 600;
+    color: var(--accent-color);
+    font-size: 0.95rem;
+}
+
+.day-time {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.day-desc {
+    font-size: 0.9rem;
+    font-style: italic;
+    color: var(--text-color);
+}
+
+.day-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.duration-pill {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+}
+
+.btn-delete-mini {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+}
+
+.btn-delete-mini:hover {
+    opacity: 1;
+    color: var(--danger-color);
+}
+
+@media (min-width: 600px) {
+    .day-info {
+        flex-direction: row;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .day-desc {
+        border-left: 2px solid var(--glass-border);
+        padding-left: 1rem;
+    }
+}
+
+/* Edit Logic Styles */
+.btn-edit-mini {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+    margin-right: 0.5rem;
+}
+
+.btn-edit-mini:hover {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+.btn-copy-mini {
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid var(--primary-color);
+    color: var(--text-color);
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.btn-copy-mini:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.btn-update {
+    background: linear-gradient(135deg, var(--accent-color), #0ea5e9);
+    box-shadow: 0 4px 12px rgba(56, 189, 248, 0.4);
+}
+
+.btn-secondary {
+    width: 100%;
+    margin-top: 0.75rem;
+    padding: 0.875rem;
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-color);
+}
+
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--glass-border);
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: &quot;&quot;;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--text-muted);
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--primary-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+    background-color: white;
+}
+
+.slider.round {
+    border-radius: 24px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+</code></pre>
+<h2>public/summary.html</h2>
+<pre><code>
+&lt;!-- summary.html --&gt;
+&lt;!DOCTYPE html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+
+&lt;head&gt;
+    &lt;meta charset=&quot;UTF-8&quot;&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;&gt;
+    &lt;title&gt;📅 Hours Summary&lt;/title&gt;
+
+        &lt;link rel=&quot;icon&quot; type=&quot;image/png&quot; href=&quot;/images/Summary.png&quot;&gt;
+
+
+    &lt;!-- Font Awesome --&gt;
+    &lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css&quot;&gt;
+
+    &lt;!-- Bootstrap --&gt;
+    &lt;link href=&quot;https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css&quot; rel=&quot;stylesheet&quot;&gt;
+
+    &lt;style&gt;
+        body {
+            background: #f4f6f9;
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 20px;
+        }
+
+        .summary-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .title-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .title-area i {
+            font-size: 30px;
+            color: #0d6efd;
+        }
+
+        .filters {
+            background: #eef3ff;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 25px;
+        }
+
+        .table thead {
+            background: #0d6efd;
+            color: white;
+        }
+
+        .hours-badge {
+            background: #198754;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .btn-menu {
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 0;
+            }
+
+            .summary-card {
+                padding: 15px;
+                border-radius: 10px;
+            }
+
+            .title-area {
+                align-items: flex-start;
+            }
+
+            .title-area i {
+                font-size: 26px;
+            }
+
+            .title-area h2 {
+                font-size: 22px;
+            }
+
+            .filters {
+                padding: 12px;
+            }
+
+            .filters .col-md-3 {
+                width: 100%;
+            }
+
+            .filters label {
+                font-weight: bold;
+                margin-bottom: 6px;
+            }
+
+            .filters select,
+            .filters input,
+            .filters button {
+                width: 100%;
+                min-height: 44px;
+                font-size: 16px;
+            }
+
+            .table-responsive {
+                overflow-x: auto;
+            }
+
+            table {
+                min-width: 520px;
+                font-size: 14px;
+            }
+
+            .hours-badge {
+                display: inline-block;
+                white-space: nowrap;
+            }
+
+            .modal-dialog {
+                margin: 10px;
+            }
+
+            .modal-body {
+                overflow-x: auto;
+            }
+
+            .modal-body table {
+                min-width: 650px;
+                font-size: 14px;
+            }
+
+            .btn-menu {
+                width: 100%;
+                min-height: 44px;
+            }
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
+
+&lt;body&gt;
+
+    &lt;div class=&quot;container&quot;&gt;
+
+        &lt;div class=&quot;summary-card&quot;&gt;
+
+            &lt;div class=&quot;title-area&quot;&gt;
+                &lt;i class=&quot;fa-solid fa-business-time&quot;&gt;&lt;/i&gt;
+                &lt;div&gt;
+                    &lt;h2 class=&quot;mb-0&quot;&gt;Hours Summary&lt;/h2&gt;
+                    &lt;small&gt;View generated employee hours&lt;/small&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+
+            &lt;!-- FILTERS --&gt;
+            &lt;div class=&quot;filters&quot;&gt;
+
+                &lt;div class=&quot;row g-3&quot;&gt;
+
+                    &lt;div class=&quot;col-md-3&quot;&gt;
+                        &lt;label class=&quot;form-label&quot;&gt;
+                            &lt;input type=&quot;checkbox&quot; id=&quot;filterWeek&quot;&gt;
+                            Filter by Week Range
+                        &lt;/label&gt;
+
+                        &lt;select id=&quot;weekRangeSelect&quot; class=&quot;form-select&quot;&gt;
+                            &lt;option value=&quot;&quot;&gt;All Weeks&lt;/option&gt;
+                        &lt;/select&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;col-md-3&quot;&gt;
+                        &lt;label class=&quot;form-label&quot;&gt;
+                            &lt;input type=&quot;checkbox&quot; id=&quot;filterMonth&quot;&gt;
+                            Filter by Month
+                        &lt;/label&gt;
+
+                        &lt;select id=&quot;monthSelect&quot; class=&quot;form-select&quot;&gt;
+                            &lt;option value=&quot;&quot;&gt;All Months&lt;/option&gt;
+                        &lt;/select&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;col-md-3&quot;&gt;
+                        &lt;label class=&quot;form-label&quot;&gt;
+                            &lt;input type=&quot;checkbox&quot; id=&quot;filterHours&quot;&gt;
+                            Minimum Hours
+                        &lt;/label&gt;
+
+                        &lt;input type=&quot;number&quot; id=&quot;minHours&quot; class=&quot;form-control&quot; placeholder=&quot;Example: 40&quot;&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;col-md-3&quot;&gt;
+                        &lt;label class=&quot;form-label&quot;&gt;
+                            &lt;input type=&quot;checkbox&quot; id=&quot;filterEmployee&quot;&gt;
+                            Employee
+                        &lt;/label&gt;
+
+                        &lt;input type=&quot;text&quot; id=&quot;employeeSearch&quot; class=&quot;form-control&quot; placeholder=&quot;Search employee&quot;&gt;
+                    &lt;/div&gt;
+
+                    &lt;div class=&quot;col-md-3 d-flex align-items-end&quot;&gt;
+                        &lt;button class=&quot;btn btn-primary w-100&quot; id=&quot;applyFilters&quot;&gt;
+                            &lt;i class=&quot;fa-solid fa-filter&quot;&gt;&lt;/i&gt;
+                            Apply Filters
+                        &lt;/button&gt;
+                    &lt;/div&gt;
+
+                &lt;/div&gt;
+
+            &lt;/div&gt;
+
+            &lt;!-- TABLE --&gt;
+            &lt;div class=&quot;table-responsive&quot;&gt;
+
+                &lt;table class=&quot;table table-bordered table-hover align-middle&quot;&gt;
+
+                    &lt;thead&gt;
+                        &lt;tr&gt;
+                            &lt;th&gt;Week Range&lt;/th&gt;
+                            &lt;th&gt;Entries&lt;/th&gt;
+                            &lt;th&gt;Total Hours&lt;/th&gt;
+                        &lt;/tr&gt;
+                    &lt;/thead&gt;
+
+                    &lt;tbody id=&quot;summaryTable&quot;&gt;&lt;/tbody&gt;
+
+                &lt;/table&gt;
+
+            &lt;/div&gt;
+
+            &lt;a href=&quot;/menu.html&quot; class=&quot;btn btn-secondary btn-menu&quot;&gt;
+                &lt;i class=&quot;fa-solid fa-arrow-left&quot;&gt;&lt;/i&gt;
+                Back to Menu
+            &lt;/a&gt;
+
+        &lt;/div&gt;
+
+    &lt;/div&gt;
+    &lt;!-- WEEK DETAILS MODAL --&gt;
+    &lt;div class=&quot;modal fade&quot; id=&quot;weekDetailsModal&quot; tabindex=&quot;-1&quot;&gt;
+        &lt;div class=&quot;modal-dialog modal-xl modal-dialog-scrollable&quot;&gt;
+            &lt;div class=&quot;modal-content&quot;&gt;
+
+                &lt;div class=&quot;modal-header&quot;&gt;
+                    &lt;h5 class=&quot;modal-title&quot; id=&quot;weekDetailsTitle&quot;&gt;Week Details&lt;/h5&gt;
+                    &lt;button type=&quot;button&quot; class=&quot;btn-close&quot; data-bs-dismiss=&quot;modal&quot;&gt;&lt;/button&gt;
+                &lt;/div&gt;
+
+                &lt;div class=&quot;modal-body&quot;&gt;
+                    &lt;table class=&quot;table table-bordered table-hover&quot;&gt;
+                        &lt;thead&gt;
+                            &lt;tr&gt;
+                                &lt;th&gt;Date&lt;/th&gt;
+                                &lt;th&gt;Hours&lt;/th&gt;
+                                &lt;th&gt;Type&lt;/th&gt;
+                                &lt;th&gt;Description&lt;/th&gt;
+                            &lt;/tr&gt;
+                        &lt;/thead&gt;
+
+                        &lt;tbody id=&quot;weekDetailsTable&quot;&gt;&lt;/tbody&gt;
+                    &lt;/table&gt;
+                &lt;/div&gt;
+
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+
+    &lt;script src=&quot;https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js&quot;&gt;&lt;/script&gt;
+    &lt;script src=&quot;summary.js&quot;&gt;&lt;/script&gt;
+
+&lt;/body&gt;
+
+&lt;/html&gt;
+</code></pre>
+<h2>public/summary.js</h2>
+<pre><code>
+// summary.js
+
+const summaryTable = document.getElementById(&#x27;summaryTable&#x27;);
+const weekRangeSelect = document.getElementById(&#x27;weekRangeSelect&#x27;);
+const monthSelect = document.getElementById(&#x27;monthSelect&#x27;);
+
+let hoursData = [];
+let groupedWeeks = {};
+
+async function loadHoursFromDatabase() {
+    try {
+        const token = localStorage.getItem(&#x27;token&#x27;);
+
+        const response = await fetch(&#x27;/api/hours/summary&#x27;, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(&#x27;Error loading hours summary&#x27;);
+        }
+
+        hoursData = await response.json();
+
+        populateWeekRanges(hoursData);
+        populateMonths(hoursData);
+        loadTable(hoursData);
+
+    } catch (error) {
+        console.error(error);
+
+        summaryTable.innerHTML = `
+            &lt;tr&gt;
+                &lt;td colspan=&quot;3&quot; class=&quot;text-center text-danger&quot;&gt;
+                    Error loading hours summary
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    }
+}
+
+function populateWeekRanges(data) {
+    weekRangeSelect.innerHTML = &#x27;&lt;option value=&quot;&quot;&gt;All Weeks&lt;/option&gt;&#x27;;
+
+    const ranges = [];
+
+    data.forEach(item =&gt; {
+        const range = getWeekRange(item.date);
+        const value = `${range.start}|${range.end}`;
+        const label = `${range.start} to ${range.end}`;
+
+        if (!ranges.includes(value)) {
+            ranges.push(value);
+
+            weekRangeSelect.innerHTML += `
+                &lt;option value=&quot;${value}&quot;&gt;
+                    ${label}
+                &lt;/option&gt;
+            `;
+        }
+    });
+}
+
+function getWeekRange(dateString) {
+    const date = new Date(dateString + &#x27;T00:00:00&#x27;);
+
+    const day = date.getDay(); // Sunday = 0
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diffToMonday);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    return {
+        start: formatDate(monday),
+        end: formatDate(sunday)
+    };
+}
+function populateMonths(data) {
+    monthSelect.innerHTML = &#x27;&lt;option value=&quot;&quot;&gt;All Months&lt;/option&gt;&#x27;;
+
+    const months = [];
+
+    data.forEach(item =&gt; {
+        const date = new Date(item.date + &#x27;T00:00:00&#x27;);
+
+        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, &#x27;0&#x27;)}`;
+
+        const label = date.toLocaleString(&#x27;en-US&#x27;, {
+            month: &#x27;long&#x27;,
+            year: &#x27;numeric&#x27;
+        });
+
+        if (!months.includes(value)) {
+            months.push(value);
+
+            monthSelect.innerHTML += `
+                &lt;option value=&quot;${value}&quot;&gt;
+                    ${label}
+                &lt;/option&gt;
+            `;
+        }
+    });
+}
+
+function formatDate(date) {
+    return date.toISOString().split(&#x27;T&#x27;)[0];
+}
+
+function loadTable(data) {
+
+    summaryTable.innerHTML = &#x27;&#x27;;
+
+    if (data.length === 0) {
+        summaryTable.innerHTML = `
+            &lt;tr&gt;
+                &lt;td colspan=&quot;3&quot; class=&quot;text-center&quot;&gt;
+                    No hours found
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+        return;
+    }
+
+    const grouped = {};
+
+    data.forEach(item =&gt; {
+
+        const range = getWeekRange(item.date);
+
+        const key = `${range.start} to ${range.end}`;
+
+        if (!grouped[key]) {
+            grouped[key] = {
+                entries: 0,
+                totalHours: 0,
+                items: []
+            };
+        }
+
+        grouped[key].entries += 1;
+        grouped[key].totalHours += Number(item.totalHours) || 0;
+        grouped[key].items.push(item);
+    });
+
+    Object.keys(grouped).forEach(key =&gt; {
+
+        const week = grouped[key];
+
+        summaryTable.innerHTML += `
+            &lt;tr&gt;
+                &lt;td&gt;${key}&lt;/td&gt;
+
+                &lt;td&gt;
+                    &lt;button class=&quot;btn btn-link p-0&quot;
+                        onclick=&quot;showWeekDetails(&#x27;${key}&#x27;)&quot;&gt;
+                        ${week.entries} entries
+                    &lt;/button&gt;
+                &lt;/td&gt;
+
+                &lt;td&gt;
+                    &lt;span class=&quot;hours-badge&quot;&gt;
+                        ${week.totalHours.toFixed(1)} hrs
+                    &lt;/span&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    });
+    groupedWeeks = grouped;
+}
+
+document.getElementById(&#x27;applyFilters&#x27;)
+    .addEventListener(&#x27;click&#x27;, () =&gt; {
+
+        let filteredData = [...hoursData];
+
+        const filterWeek = document.getElementById(&#x27;filterWeek&#x27;).checked;
+        const filterHours = document.getElementById(&#x27;filterHours&#x27;).checked;
+        const filterEmployee = document.getElementById(&#x27;filterEmployee&#x27;).checked;
+        const filterMonth = document.getElementById(&#x27;filterMonth&#x27;).checked;
+
+        const selectedMonth = monthSelect.value;
+        const selectedWeekRange = weekRangeSelect.value;
+        const minHours = parseFloat(document.getElementById(&#x27;minHours&#x27;).value);
+        const employeeSearch = document.getElementById(&#x27;employeeSearch&#x27;).value.toLowerCase();
+
+        if (filterWeek &amp;&amp; selectedWeekRange !== &#x27;&#x27;) {
+            const [start, end] = selectedWeekRange.split(&#x27;|&#x27;);
+
+            filteredData = filteredData.filter(item =&gt; {
+                const itemDate = item.date;
+                return itemDate &gt;= start &amp;&amp; itemDate &lt;= end;
+            });
+        }
+
+        if (filterHours &amp;&amp; !isNaN(minHours)) {
+            filteredData = filteredData.filter(item =&gt;
+                item.totalHours &gt;= minHours
+            );
+        }
+
+        if (filterMonth &amp;&amp; selectedMonth !== &#x27;&#x27;) {
+            filteredData = filteredData.filter(item =&gt;
+                item.date.startsWith(selectedMonth)
+            );
+        }
+
+        if (filterEmployee &amp;&amp; employeeSearch !== &#x27;&#x27;) {
+            filteredData = filteredData.filter(item =&gt;
+                item.employee.toLowerCase().includes(employeeSearch)
+            );
+        }
+
+        loadTable(filteredData);
+        
+    });
+
+function showWeekDetails(weekKey) {
+
+    const week = groupedWeeks[weekKey];
+
+    const title = document.getElementById(&#x27;weekDetailsTitle&#x27;);
+    const table = document.getElementById(&#x27;weekDetailsTable&#x27;);
+
+    title.textContent = `Details: ${weekKey}`;
+
+    table.innerHTML = &#x27;&#x27;;
+
+    // PRACTICUM ENTRIES
+    const practicumItems = week.items.filter(item =&gt;
+        item.recordType === &#x27;practicum&#x27;
+    );
+
+    // WORK ENTRIES
+    const workItems = week.items.filter(item =&gt;
+        (item.recordType || &#x27;work&#x27;) === &#x27;work&#x27;
+    );
+
+    // PRACTICUM SECTION
+    if (practicumItems.length &gt; 0) {
+
+        let practicumTotal = 0;
+
+        table.innerHTML += `
+            &lt;tr class=&quot;table-primary&quot;&gt;
+                &lt;td colspan=&quot;6&quot;&gt;
+                    &lt;strong&gt;Practicum Entries&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+
+        practicumItems.forEach(item =&gt; {
+
+            practicumTotal += Number(item.totalHours) || 0;
+
+            table.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${item.date}&lt;/td&gt;
+
+                    &lt;td&gt;${item.totalHours} hrs&lt;/td&gt;
+                    &lt;td&gt;${item.recordType}&lt;/td&gt;
+                    &lt;td&gt;${item.description || &#x27;&#x27;}&lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+        });
+
+        table.innerHTML += `
+            &lt;tr class=&quot;table-primary&quot;&gt;
+                &lt;td colspan=&quot;3&quot;&gt;
+                    &lt;strong&gt;Total Practicum Hours&lt;/strong&gt;
+                &lt;/td&gt;
+
+                &lt;td colspan=&quot;3&quot;&gt;
+                    &lt;strong&gt;${practicumTotal.toFixed(1)} hrs&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    }
+
+    // WORK SECTION
+    if (workItems.length &gt; 0) {
+
+        let workTotal = 0;
+
+        table.innerHTML += `
+            &lt;tr class=&quot;table-warning&quot;&gt;
+                &lt;td colspan=&quot;6&quot;&gt;
+                    &lt;strong&gt;Regular Work Entries&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+
+        workItems.forEach(item =&gt; {
+
+            workTotal += Number(item.totalHours) || 0;
+
+            table.innerHTML += `
+                &lt;tr&gt;
+                    &lt;td&gt;${item.date}&lt;/td&gt; 
+                    &lt;td&gt;${item.totalHours} hrs&lt;/td&gt;
+                    &lt;td&gt;${item.recordType}&lt;/td&gt;
+                    &lt;td&gt;${item.description || &#x27;&#x27;}&lt;/td&gt;
+                &lt;/tr&gt;
+            `;
+        });
+
+        table.innerHTML += `
+            &lt;tr class=&quot;table-warning&quot;&gt;
+                &lt;td colspan=&quot;3&quot;&gt;
+                    &lt;strong&gt;Total Work Hours&lt;/strong&gt;
+                &lt;/td&gt;
+
+                &lt;td colspan=&quot;3&quot;&gt;
+                    &lt;strong&gt;${workTotal.toFixed(1)} hrs&lt;/strong&gt;
+                &lt;/td&gt;
+            &lt;/tr&gt;
+        `;
+    }
+
+    const modal =
+        new bootstrap.Modal(
+            document.getElementById(&#x27;weekDetailsModal&#x27;)
+        );
+
+    modal.show();
+}
+
+loadHoursFromDatabase();
+</code></pre>
+<h2>routes/admin.routes.js</h2>
+<pre><code>
+const express = require(&#x27;express&#x27;);
+const { requireAuth, requireAdmin } = require(&#x27;../middleware/auth.middleware&#x27;);
+const { getAllUsers, resetUserPassword, deleteUser, getAllHours, getUserHours } = require(&#x27;../controllers/admin.controller&#x27;);
+
+const router = express.Router();
+
+// All routes require both authentication and admin privileges
+router.use(requireAuth);
+router.use(requireAdmin);
+
+router.get(&#x27;/users&#x27;, getAllUsers);
+router.put(&#x27;/users/password&#x27;, resetUserPassword);
+router.delete(&#x27;/users/:userId&#x27;, deleteUser);
+router.get(&#x27;/hours&#x27;, getAllHours);
+router.get(&#x27;/users/:userId/hours&#x27;, getUserHours);
+
+module.exports = router;
+
+</code></pre>
+<h2>routes/auth.routes.js</h2>
+<pre><code>
+const express = require(&#x27;express&#x27;);
+const { register, login, changePassword } = require(&#x27;../controllers/auth.controller&#x27;);
+const { requireAuth } = require(&#x27;../middleware/auth.middleware&#x27;);
+
+const router = express.Router();
+router.post(&#x27;/register&#x27;, register);
+router.post(&#x27;/login&#x27;, login);
+router.put(&#x27;/password&#x27;, requireAuth, changePassword);
+
+module.exports = router;
+</code></pre>
+<h2>routes/workHours.routes.js</h2>
+<pre><code>
+const express = require(&#x27;express&#x27;);
+const { requireAuth } = require(&#x27;../middleware/auth.middleware&#x27;);
+const { createHours, getMyHours, updateHours, deleteHours } = require(&#x27;../controllers/workHours.controller&#x27;);
+
+const router = express.Router();
+
+router.get(&#x27;/&#x27;, requireAuth, getMyHours);
+router.post(&#x27;/&#x27;, requireAuth, createHours);
+router.put(&#x27;/:id&#x27;, requireAuth, updateHours);
+router.delete(&#x27;/:id&#x27;, requireAuth, deleteHours);
+
+module.exports = router;
+</code></pre>
+<h2>scripts/createAdmin.js</h2>
+<pre><code>
+require(&#x27;dotenv&#x27;).config();
+const mongoose = require(&#x27;mongoose&#x27;);
+const bcrypt = require(&#x27;bcryptjs&#x27;);
+const User = require(&#x27;../models/user.model&#x27;);
+
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) {
+    console.error(&#x27;MONGO_URI is missing in .env file&#x27;);
+    process.exit(1);
+}
+
+const createAdmin = async () =&gt; {
+    try {
+        await mongoose.connect(MONGO_URI);
+        console.log(&#x27;✅ Mongo Connected&#x27;);
+
+        const adminUsername = &#x27;admin&#x27;;
+        const adminPassword = &#x27;Conectividad.1&#x27;;
+
+        const existingAdmin = await User.findOne({ username: adminUsername });
+        if (existingAdmin) {
+            console.log(`Admin user &#x27;${adminUsername}&#x27; already exists. Updating role to admin just in case.`);
+            existingAdmin.role = &#x27;admin&#x27;;
+            existingAdmin.passwordHash = bcrypt.hashSync(adminPassword, 10);
+            await existingAdmin.save();
+            console.log(&#x27;Admin user updated successfully.&#x27;);
+            process.exit(0);
+        }
+
+        const passwordHash = bcrypt.hashSync(adminPassword, 10);
+
+        const adminUser = new User({
+            username: adminUsername,
+            passwordHash,
+            role: &#x27;admin&#x27;
+        });
+
+        await adminUser.save();
+        console.log(`✅ Admin user &#x27;${adminUsername}&#x27; created successfully.`);
+
+        process.exit(0);
+    } catch (error) {
+        console.error(&#x27;Error creating admin user:&#x27;, error);
+        process.exit(1);
+    }
+};
+
+createAdmin();
+
+</code></pre>
+<h2>server.js</h2>
+<pre><code>
+require(&#x27;dotenv&#x27;).config();
+const express = require(&#x27;express&#x27;);
+const mongoose = require(&#x27;mongoose&#x27;);
+const cors = require(&#x27;cors&#x27;);
+
+const Hour = require(&#x27;./models/hours.model&#x27;); // ✅ importa el modelo
+const authRoutes = require(&#x27;./routes/auth.routes&#x27;);
+const adminRoutes = require(&#x27;./routes/admin.routes&#x27;);
+const { requireAuth } = require(&#x27;./middleware/auth.middleware&#x27;);
+const inspectionRoutes = require(&#x27;./inspection/inspection.routes&#x27;);
+
+const app = express();
+
+const PORT = process.env.PORT || 3000;       // ✅ define port
+const MONGO_URI = process.env.MONGO_URI;     // ✅ toma del .env
+
+app.use(cors());
+app.use(express.json());
+const path = require(&#x27;path&#x27;);
+app.use(express.static(path.join(__dirname, &#x27;public&#x27;)));
+
+app.get(&#x27;/health&#x27;, (req, res) =&gt; res.status(200).send(&#x27;OK&#x27;));
+
+app.use(&#x27;/api/auth&#x27;, authRoutes);
+app.use(&#x27;/api/admin&#x27;, adminRoutes);
+app.use(&#x27;/inspection&#x27;, inspectionRoutes);
+
+// Connect Mongo
+mongoose.connect(MONGO_URI)
+    .then(() =&gt; console.log(&#x27;✅ Mongo Connected&#x27;))
+    .catch(err =&gt; console.log(err));
+
+// GET all hours
+app.get(&#x27;/api/hours&#x27;, requireAuth, async (req, res) =&gt; {
+    try {
+        const hours = await Hour.find({ userId: req.userId }).sort({ date: -1, startTime: -1 });
+        res.json(hours);
+    } catch (error) {
+        res.status(500).json({ error: &#x27;Failed to read data&#x27; });
+    }
+});
+
+// GET hours summary
+app.get(&#x27;/api/hours/summary&#x27;, requireAuth, async (req, res) =&gt; {
+    try {
+        const hours = await Hour.find({ userId: req.userId })
+            .sort({ date: -1, startTime: -1 });
+
+        const summary = hours.map(item =&gt; {
+            const start = new Date(`2000-01-01T${item.startTime}`);
+            const end = new Date(`2000-01-01T${item.endTime}`);
+
+            const totalHours = (end - start) / (1000 * 60 * 60);
+
+            return {
+                employee: &#x27;Me&#x27;,
+                date: item.date,
+                week: getWeekLabel(item.date),
+                totalHours: totalHours,
+                recordType: item.recordType,
+                description: item.description
+            };
+        });
+
+        res.json(summary);
+
+    } catch (error) {
+        res.status(500).json({ error: &#x27;Failed to load summary&#x27; });
+    }
+});
+
+function getWeekLabel(dateString) {
+    const date = new Date(dateString);
+    const firstDay = new Date(date.getFullYear(), 0, 1);
+    const days = Math.floor((date - firstDay) / (24 * 60 * 60 * 1000));
+    const weekNumber = Math.ceil((days + firstDay.getDay() + 1) / 7);
+
+    return `Week ${weekNumber}`;
+}
+
+// POST new entry
+app.post(&#x27;/api/hours&#x27;, requireAuth, async (req, res) =&gt; {
+    try {
+        const { date, startTime, endTime, description, recordType } = req.body;
+
+        if (!date || !startTime || !endTime) {
+            return res.status(400).json({ error: &#x27;Missing required fields&#x27; });
+        }
+
+        const newEntry = new Hour({
+            id: Date.now().toString(),
+            userId: req.userId,
+            date,
+            startTime,
+            endTime,
+            description: description || &#x27;&#x27;,
+            recordType: recordType || &#x27;work&#x27;
+        });
+
+        await newEntry.save();
+
+        res.status(201).json(newEntry);
+    } catch (error) {
+        res.status(500).json({ error: &#x27;Failed to save data&#x27; });
+    }
+});
+
+// PUT update entry
+app.put(&#x27;/api/hours/:id&#x27;, requireAuth, async (req, res) =&gt; {
+    try {
+        const { id } = req.params;
+        const { date, startTime, endTime, description, recordType } = req.body;
+
+        if (!date || !startTime || !endTime) {
+            return res.status(400).json({ error: &#x27;Missing required fields&#x27; });
+        }
+
+        const updated = await Hour.findOneAndUpdate(
+            { id, userId: req.userId },
+            { date, startTime, endTime, description: description || &#x27;&#x27;, recordType: recordType || &#x27;work&#x27; },
+            { new: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({ error: &#x27;Entry not found&#x27; });
+        }
+
+        res.json(updated);
+    } catch (error) {
+        res.status(500).json({ error: &#x27;Failed to update data&#x27; });
+    }
+});
+
+// DELETE entry
+app.delete(&#x27;/api/hours/:id&#x27;, requireAuth, async (req, res) =&gt; {
+    try {
+        const { id } = req.params;
+
+        const result = await Hour.deleteOne({ id, userId: req.userId });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ error: &#x27;Entry not found&#x27; });
+        }
+
+        res.json({ message: &#x27;Entry deleted&#x27; });
+    } catch (error) {
+        res.status(500).json({ error: &#x27;Failed to delete data&#x27; });
+    }
+});
+
+app.listen(PORT, () =&gt; {
+    console.log(`Server running at http://localhost:${PORT}`);
+});
+</code></pre>
+<h2>test.hours.json</h2>
+<pre><code>
+[{
+  &quot;_id&quot;: {
+    &quot;$oid&quot;: &quot;699fc3858abef7aa73f5f242&quot;
+  },
+  &quot;id&quot;: &quot;1772077957642&quot;,
+  &quot;date&quot;: &quot;2026-02-23&quot;,
+  &quot;startTime&quot;: &quot;09:00&quot;,
+  &quot;endTime&quot;: &quot;17:00&quot;,
+  &quot;description&quot;: &quot;Cornestone&quot;,
+  &quot;__v&quot;: 0
+},
+{
+  &quot;_id&quot;: {
+    &quot;$oid&quot;: &quot;699fc3af8abef7aa73f5f245&quot;
+  },
+  &quot;id&quot;: &quot;1772077999136&quot;,
+  &quot;date&quot;: &quot;2026-02-24&quot;,
+  &quot;startTime&quot;: &quot;06:00&quot;,
+  &quot;endTime&quot;: &quot;17:00&quot;,
+  &quot;description&quot;: &quot;CorneStone&quot;,
+  &quot;__v&quot;: 0
+},
+{
+  &quot;_id&quot;: {
+    &quot;$oid&quot;: &quot;699fc3f38abef7aa73f5f248&quot;
+  },
+  &quot;id&quot;: &quot;1772078067318&quot;,
+  &quot;date&quot;: &quot;2026-02-25&quot;,
+  &quot;startTime&quot;: &quot;09:00&quot;,
+  &quot;endTime&quot;: &quot;17:00&quot;,
+  &quot;description&quot;: &quot;CorneStone&quot;,
+  &quot;__v&quot;: 0
+}]
+</code></pre>
+
+</body>
+</html>

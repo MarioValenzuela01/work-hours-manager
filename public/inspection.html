@@ -1,431 +1,608 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspection Form - Banglabash WorkFlow</title>
 
     <link rel="icon" type="image/png" href="/images/Inspection.png">
 
     <style>
+        :root {
+            --bg: #0f172a;
+            --card: rgba(30, 41, 59, 0.88);
+            --border: rgba(255, 255, 255, 0.12);
+            --text: #f8fafc;
+            --muted: #94a3b8;
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #22c55e;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             margin: 0;
-            font-family: Arial;
-            padding-bottom: 100px;
+            font-family: Arial, Helvetica, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
         }
 
-        #form-wrapper {
-            width: 100%;
-            overflow: auto;
+        .page {
+            max-width: 1000px;
+            margin: 0 auto;
         }
 
-        #form-container {
-            position: relative;
-            width: 800px;
-            transform-origin: top left;
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
         }
 
-        #form-container img {
-            width: 100%;
+        h1 {
+            margin: 0;
+            font-size: 28px;
         }
 
-        .field {
-            position: absolute;
-            border: 1px solid black;
-            border-bottom: 1px solid black;
-            background: rgba(250, 235, 215, 0.5);
-            font-size: 18px;
-            font-weight: bold;
-
-            height: 22px;
-            line-height: 23px;
-            padding: 0;
+        .subtitle {
+            margin-top: 6px;
+            color: var(--muted);
         }
 
-        .fieldX {
-            position: absolute;
-            border: 1px solid black;
-            background: rgba(250, 235, 215, 0.5);
-
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-
-            height: 22px;
-            line-height: 23px;
-            padding: 0;
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
         }
 
-        .btn {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            padding: 15px;
-            background: black;
-            color: white;
-            border: none;
-            font-size: 16px;
-            z-index: 9999;
-        }
-
-        .label {
-            position: absolute;
+        h2 {
+            margin-top: 0;
             font-size: 20px;
-            font-weight: bold;
-            color: black;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 18px;
         }
 
-        .fieldCenter {
-            position: absolute;
-            border: 1px solid black;
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
 
-            height: 22px;
-            line-height: 23px;
-            padding: 0;
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
 
-            /* border-bottom: 1px solid black; */
-            background: rgba(250, 235, 215, 0.5);
-            font-size: 18px;
+        label {
+            display: block;
+            color: var(--muted);
+            margin-bottom: 6px;
+            font-size: 14px;
             font-weight: bold;
-            text-align: center;
+        }
+
+        input,
+        textarea,
+        select {
+            width: 100%;
+            padding: 11px 12px;
+            border-radius: 9px;
+            border: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.85);
+            color: var(--text);
+            font-size: 15px;
+        }
+
+        textarea {
+            min-height: 110px;
+            resize: vertical;
+        }
+
+        .check-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px 18px;
+        }
+
+        .check-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        .check-item input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--success);
+        }
+
+        .check-item span {
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .fluid-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .fluid-table th,
+        .fluid-table td {
+            border: 1px solid var(--border);
+            padding: 8px;
+            text-align: left;
+        }
+
+        .fluid-table th {
+            color: var(--muted);
+            background: rgba(15, 23, 42, 0.6);
+        }
+
+        .fluid-table input {
+            padding: 8px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 22px;
+        }
+
+        button,
+        .btn-link {
+            border: none;
+            border-radius: 10px;
+            padding: 12px 18px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .note {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 760px) {
+            body {
+                padding: 14px;
+            }
+
+            .top-bar,
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .grid-2,
+            .grid-3,
+            .check-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 
 <body>
 
-    <div id="form-wrapper">
-        <div id="form-container">
+    <div class="page">
 
-            <!-- 👇 OJO: asegúrate que esta ruta existe -->
-            <img src="/images/form.png">
-            <script>
-                document.addEventListener('DOMContentLoaded', () => {
-                    const qp = new URLSearchParams(window.location.search);
-                    if (qp.has('date')) document.getElementById('date').value = qp.get('date');
-                    if (qp.has('hourStart')) document.getElementById('hourStart').value = qp.get('hourStart');
-                    if (qp.has('hourEnd')) document.getElementById('hourEnd').value = qp.get('hourEnd');
-                });
-            </script>
+        <div class="top-bar">
+            <div>
+                <h1>Inspection Form</h1>
+                <div class="subtitle">Pre-Operation Safety & Maintenance Inspection</div>
+            </div>
 
-            <!-- Operator -->
-            <input id="operator" class="field" style="top: 308px; left: 160px; width: 380px;"
-                placeholder="Enter operator name">
-
-            <!-- Date -->
-            <input type="date" id="date" class="field" style="top: 308px; left: 600px; width: 120px;">
-
-            <!-- Long or Small -->
-            <input id="size" class="field" style="top: 338px; left: 160px; width: 150px;" placeholder="Long or Small">
-
-            <!-- Serial Number -->
-            <input id="serialNumber" class="field" style="top: 338px; left: 395px; width: 150px;">
-
-            <!-- Hour Start -->
-            <input id="hourStart" class="field" style="top: 338px; left: 605px; width: 120px;" placeholder="Hour Start">
-
-
-            <p class="label" style="top: 350px; left: 495px;">End Hours:</p>
-            <!-- Hour End -->
-            <input id="hourEnd" class="field" style="top: 368px; left: 605px; width: 120px;" placeholder="Hour End">
-
-            <!-- field1 -->
-            <input id="field1" name="field1" class="fieldX" style="top: 400px; left: 357px; width: 23px;">
-            <!-- field2 -->
-            <input id="field2" name="field2" class="fieldX" style="top: 422px; left: 357px; width: 23px;">
-            <!-- field3 -->
-            <input id="field3" name="field3" class="fieldX" style="top: 444px; left: 357px; width: 23px;">
-            <!-- field4 -->
-            <input id="field4" name="field4" class="fieldX" style="top: 466px; left: 357px; width: 23px;">
-            <!-- field5 -->
-            <input id="field5" name="field5" class="fieldX" style="top: 488px; left: 357px; width: 23px;">
-            <!-- field6 -->
-            <input id="field6" name="field6" class="fieldX" style="top: 543px; left: 357px; width: 23px;">
-            <!-- field7 -->
-            <input id="field7" name="field7" class="fieldX" style="top: 565px; left: 357px; width: 23px;">
-            <!-- field8 -->
-            <input id="field8" name="field8" class="fieldX" style="top: 586px; left: 357px; width: 23px;">
-            <!-- field9 -->
-            <input id="field9" name="field9" class="fieldX" style="top: 608px; left: 357px; width: 23px;">
-            <!-- field10 -->
-            <input id="field10" name="field10" class="fieldX" style="top: 630px; left: 357px; width: 23px;">
-            <!-- field11 -->
-            <input id="field11" name="field11" class="fieldX" style="top: 652px; left: 357px; width: 23px;">
-            <!-- field12 -->
-            <input id="field12" name="field12" class="fieldX" style="top: 674px; left: 357px; width: 23px;">
-            <!-- field13 -->
-            <input id="field13" name="field13" class="fieldX" style="top: 696px; left: 357px; width: 23px;">
-            <!-- field14 -->
-            <input id="field14" name="field14" class="fieldX" style="top: 401px; left: 700px; width: 23px;">
-            <!-- field15 -->
-            <input id="field15" name="field15" class="fieldX" style="top: 422px; left: 700px; width: 23px;">
-            <!-- field16 -->
-            <input id="field16" name="field16" class="fieldX" style="top: 444px; left: 700px; width: 23px;">
-            <!-- field17 -->
-            <input id="field17" name="field17" class="fieldX" style="top: 466px; left: 700px; width: 23px;">
-            <!-- field18 -->
-            <input id="field18" name="field18" class="fieldX" style="top: 543px; left: 700px; width: 23px;">
-            <!-- field19 -->
-            <input id="field19" name="field19" class="fieldX" style="top: 565px; left: 700px; width: 23px;">
-            <!-- field20 -->
-            <input id="field20" name="field20" class="fieldX" style="top: 586px; left: 700px; width: 23px;">
-            <!-- field21 -->
-            <input id="field21" name="field21" class="fieldX" style="top: 608px; left: 700px; width: 23px;">
-            <!-- field22 -->
-            <input id="field22" name="field22" class="fieldX" style="top: 630px; left: 700px; width: 23px;">
-            <!-- field23 -->
-            <input id="field23" name="field23" class="fieldX" style="top: 652px; left: 700px; width: 23px;">
-            <!-- field24 -->
-            <input id="field24" name="field24" class="fieldX" style="top: 674px; left: 700px; width: 23px;">
-            <!-- field25 -->
-            <input id="field25" name="field25" class="fieldX" style="top: 696px; left: 700px; width: 23px;">
-            <!-- field26 -->
-            <input id="field26" name="field26" class="fieldX" style="top: 746px; left: 232px; width: 23px;">
-            <!-- field27 -->
-            <input id="field27" name="field27" class="fieldX" style="top: 770px; left: 232px; width: 23px;">
-            <!-- field28 -->
-            <input id="field28" name="field28" class="fieldX" style="top: 792px; left: 232px; width: 23px;">
-            <!-- field29 -->
-            <input id="field29" name="field29" class="fieldX" style="top: 816px; left: 232px; width: 23px;">
-            <!-- field30 -->
-            <input id="field30" name="field30" class="fieldX" style="top: 838px; left: 232px; width: 23px;">
-            <!-- field31 -->
-            <input id="field31" name="field31" class="fieldX" style="top: 860px; left: 232px; width: 23px;">
-            <!-- field32 -->
-            <input id="field32" name="field32" class="fieldX" style="top: 882px; left: 232px; width: 23px;">
-
-            <!-- field33 -->
-            <input id="field33" name="field33" class="fieldCenter" style="top: 746px; left: 265px; width: 145px;">
-            <!-- field34 -->
-            <input id="field34" name="field34" class="fieldCenter" style="top: 770px; left: 265px; width: 145px;">
-            <!-- field35 -->
-            <input id="field35" name="field35" class="fieldCenter" style="top: 792px; left: 265px; width: 145px;">
-            <!-- field36 -->
-            <input id="field36" name="field36" class="fieldCenter" style="top: 816px; left: 265px; width: 145px;">
-            <!-- field37 -->
-            <input id="field37" name="field37" class="fieldCenter" style="top: 838px; left: 265px; width: 145px;">
-            <!-- field38 -->
-            <input id="field38" name="field38" class="fieldCenter" style="top: 860px; left: 265px; width: 145px;">
-            <!-- field39 -->
-            <input id="field39" name="field39" class="fieldCenter" style="top: 882px; left: 265px; width: 145px;">
-
-            <!-- field40 -->
-            <input id="field40" name="field40" class="fieldCenter" style="top: 746px; left: 420px; width: 120px;">
-            <!-- field41 -->
-            <input id="field41" name="field41" class="fieldCenter" style="top: 770px; left: 420px; width: 120px;">
-            <!-- field42 -->
-            <input id="field42" name="field42" class="fieldCenter" style="top: 792px; left: 420px; width: 120px;">
-            <!-- field43 -->
-            <input id="field43" name="field43" class="fieldCenter" style="top: 816px; left: 420px; width: 120px;">
-            <!-- field44 -->
-            <input id="field44" name="field44" class="fieldCenter" style="top: 838px; left: 420px; width: 120px;">
-            <!-- field45 -->
-            <input id="field45" name="field45" class="fieldCenter" style="top: 860px; left: 420px; width: 120px;">
-            <!-- field46 -->
-            <input id="field46" name="field46" class="fieldCenter" style="top: 882px; left: 420px; width: 120px;">
-
-            <!-- field47 -->
-            <input id="field47" name="field47" class="fieldCenter" style="top: 746px; left: 550px; width: 170px;">
-            <!-- field48 -->
-            <input id="field48" name="field48" class="fieldCenter" style="top: 770px; left: 550px; width: 170px;">
-            <!-- field49 -->
-            <input id="field49" name="field49" class="fieldCenter" style="top: 792px; left: 550px; width: 170px;">
-            <!-- field50 -->
-            <input id="field50" name="field50" class="fieldCenter" style="top: 816px; left: 550px; width: 170px;">
-            <!-- field51 -->
-            <input id="field51" name="field51" class="fieldCenter" style="top: 838px; left: 550px; width: 170px;">
-            <!-- field52 -->
-            <input id="field52" name="field52" class="fieldCenter" style="top: 860px; left: 550px; width: 170px;">
-            <!-- field53 -->
-            <input id="field53" name="field53" class="fieldCenter" style="top: 882px; left: 550px; width: 170px;">
-
-            <textarea id="comments" name="comments" maxlength="220" style="
-        position: absolute;
-        top: 950px;
-        left: 72px;
-        width: 650px;
-        height: 90px;
-        border: 1px solid black;
-        background: rgba(250, 235, 215, 0.5);
-        font-size: 12px;
-        font-weight: normal;
-        line-height: 14px;
-        padding: 4px;
-        resize: none;
-        overflow: hidden;
-        box-sizing: border-box;
-        text-indent: 0;
-    "></textarea>
-
-
-
-
-
+            <a href="/menu.html" class="btn-link btn-secondary">Back to Menu</a>
         </div>
+
+        <form id="inspection-form">
+
+            <section class="card">
+                <h2>General Information</h2>
+
+                <div class="grid-2">
+                    <div>
+                        <label for="operator">Operator</label>
+                        <input id="operator" name="operator" placeholder="Operator name">
+                    </div>
+
+                    <div>
+                        <label for="date">Date</label>
+                        <input type="date" id="date" name="date">
+                    </div>
+
+                    <div>
+                        <label for="size">Model / Size</label>
+                        <input id="size" name="size" placeholder="Long, Small, Model, etc.">
+                    </div>
+
+                    <div>
+                        <label for="serialNumber">Serial Number</label>
+                        <input id="serialNumber" name="serialNumber" placeholder="Serial number">
+                    </div>
+
+                    <div>
+                        <label for="hourStart">Hour Start</label>
+                        <input id="hourStart" name="hourStart" placeholder="Example: 120.5">
+                    </div>
+
+                    <div>
+                        <label for="hourEnd">Hour End</label>
+                        <input id="hourEnd" name="hourEnd" placeholder="Example: 125.0">
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>From the Ground</h2>
+
+                <div class="check-grid">
+                    <label class="check-item">
+                        <input type="checkbox" id="field1">
+                        <span>Overall Machine Appearance</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field2">
+                        <span>ROPS, Grab Bars, Steps, Hand Holds</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field3">
+                        <span>Frame / Undercarriage</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field4">
+                        <span>Lights, Harnesses, Electrical Items</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field5">
+                        <span>Tires, Rims, Wheel Locks / Tracks</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field14">
+                        <span>Under the Machine</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field15">
+                        <span>Belts, Hoses, Hydraulic Cylinders</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field16">
+                        <span>Engine Compartment Cleanliness</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field17">
+                        <span>Cooler Cores</span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>In the Operator's Station</h2>
+
+                <div class="check-grid">
+                    <label class="check-item">
+                        <input type="checkbox" id="field6">
+                        <span>Cab Windows</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field7">
+                        <span>Overall Cleanliness</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field8">
+                        <span>Operator's Manual Present</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field9">
+                        <span>Seat, Seat Belt, Buckle, Mount</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field10">
+                        <span>Mirrors, Rear Camera</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field11">
+                        <span>Windshield Wipers</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field12">
+                        <span>Defroster</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field13">
+                        <span>Gauges, Indicator Lights, Switches</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field18">
+                        <span>Fuel</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field19">
+                        <span>Fire Extinguisher</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field20">
+                        <span>Horn</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field21">
+                        <span>Park Brake</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field22">
+                        <span>Brakes</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field23">
+                        <span>Steering / Secondary Steering</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field24">
+                        <span>Travel Alarm / Back Up Alarm</span>
+                    </label>
+
+                    <label class="check-item">
+                        <input type="checkbox" id="field25">
+                        <span>Diagnostic Trouble Codes</span>
+                    </label>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>Fluids</h2>
+
+                <p class="note">
+                    Marca el fluido si fue revisado. Los campos de la derecha se imprimen en las columnas del formulario oficial.
+                </p>
+
+                <table class="fluid-table">
+                    <thead>
+                        <tr>
+                            <th>Checked</th>
+                            <th>Fluid</th>
+                            <th>Level / Amount</th>
+                            <th>Added</th>
+                            <th>Comments</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr>
+                            <td><input type="checkbox" id="field26"></td>
+                            <td>Engine Oil</td>
+                            <td><input id="field33"></td>
+                            <td><input id="field40"></td>
+                            <td><input id="field47"></td>
+                        </tr>
+
+                        <tr>
+                            <td><input type="checkbox" id="field27"></td>
+                            <td>Hydraulic Oil</td>
+                            <td><input id="field34"></td>
+                            <td><input id="field41"></td>
+                            <td><input id="field48"></td>
+                        </tr>
+
+                        <tr>
+                            <td><input type="checkbox" id="field28"></td>
+                            <td>Transmission Oil</td>
+                            <td><input id="field35"></td>
+                            <td><input id="field42"></td>
+                            <td><input id="field49"></td>
+                        </tr>
+
+                        <tr>
+                            <td><input type="checkbox" id="field29"></td>
+                            <td>Engine Coolant</td>
+                            <td><input id="field36"></td>
+                            <td><input id="field43"></td>
+                            <td><input id="field50"></td>
+                        </tr>
+
+                        <tr>
+                            <td><input type="checkbox" id="field30"></td>
+                            <td>Washer Fluid</td>
+                            <td><input id="field37"></td>
+                            <td><input id="field44"></td>
+                            <td><input id="field51"></td>
+                        </tr>
+
+                        <tr>
+                            <td><input type="checkbox" id="field31"></td>
+                            <td>Fuel</td>
+                            <td><input id="field38"></td>
+                            <td><input id="field45"></td>
+                            <td><input id="field52"></td>
+                        </tr>
+
+                        <tr>
+                            <td><input type="checkbox" id="field32"></td>
+                            <td>DEF</td>
+                            <td><input id="field39"></td>
+                            <td><input id="field46"></td>
+                            <td><input id="field53"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="card">
+                <h2>Comments</h2>
+
+                <textarea id="comments" name="comments" maxlength="220" placeholder="Write comments here..."></textarea>
+                <div class="note">Maximum 220 characters to fit the official PDF space.</div>
+            </section>
+
+            <div class="actions">
+                <button type="button" class="btn-secondary" onclick="clearForm()">Clear</button>
+                <button type="button" class="btn-primary" onclick="generatePDF()">Generate Official PDF</button>
+            </div>
+
+        </form>
 
     </div>
 
-    <button class="btn" onclick="generatePDF()">Generate PDF</button>
-
-
     <script>
-        function scaleForm() {
-            const container = document.getElementById('form-container');
-            const wrapper = document.getElementById('form-wrapper');
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('token');
 
-            const scale = wrapper.clientWidth / 800;
-            container.style.transform = `scale(${scale})`;
+            if (!token) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            const qp = new URLSearchParams(window.location.search);
+
+            if (qp.has('date')) {
+                document.getElementById('date').value = qp.get('date');
+            }
+
+            if (qp.has('hourStart')) {
+                document.getElementById('hourStart').value = qp.get('hourStart');
+            }
+
+            if (qp.has('hourEnd')) {
+                document.getElementById('hourEnd').value = qp.get('hourEnd');
+            }
+
+            if (!document.getElementById('date').value) {
+                const today = new Date();
+                document.getElementById('date').value =
+                    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            }
+        });
+
+        function getValue(id) {
+            const el = document.getElementById(id);
+            if (!el) return "";
+
+            if (el.type === "checkbox") {
+                return el.checked ? "X" : "";
+            }
+
+            return el.value || "";
         }
 
-        window.addEventListener('load', scaleForm);
-        window.addEventListener('resize', scaleForm);
-
         function generatePDF() {
-
             const data = {
-
-                operator: document.getElementById('operator').value,
-                date: document.getElementById('date').value,
-                size: document.getElementById('size').value,
-                serialNumber: document.getElementById('serialNumber').value,
-                hourStart: document.getElementById('hourStart').value,
-                hourEnd: document.getElementById('hourEnd').value,
-
-                field1: document.getElementById('field1').value,
-                field2: document.getElementById('field2').value,
-                field3: document.getElementById('field3').value,
-                field4: document.getElementById('field4').value,
-                field5: document.getElementById('field5').value,
-                field6: document.getElementById('field6').value,
-                field7: document.getElementById('field7').value,
-                field8: document.getElementById('field8').value,
-                field9: document.getElementById('field9').value,
-                field10: document.getElementById('field10').value,
-                field11: document.getElementById('field11').value,
-                field12: document.getElementById('field12').value,
-                field13: document.getElementById('field13').value,
-                field14: document.getElementById('field14').value,
-                field15: document.getElementById('field15').value,
-                field16: document.getElementById('field16').value,
-                field17: document.getElementById('field17').value,
-                field18: document.getElementById('field18').value,
-                field19: document.getElementById('field19').value,
-                field20: document.getElementById('field20').value,
-                field21: document.getElementById('field21').value,
-                field22: document.getElementById('field22').value,
-                field23: document.getElementById('field23').value,
-                field24: document.getElementById('field24').value,
-                field25: document.getElementById('field25').value,
-                field26: document.getElementById('field26').value,
-                field27: document.getElementById('field27').value,
-                field28: document.getElementById('field28').value,
-                field29: document.getElementById('field29').value,
-                field30: document.getElementById('field30').value,
-                field31: document.getElementById('field31').value,
-                field32: document.getElementById('field32').value,
-                field33: document.getElementById('field33').value,
-                field34: document.getElementById('field34').value,
-                field35: document.getElementById('field35').value,
-                field36: document.getElementById('field36').value,
-                field37: document.getElementById('field37').value,
-                field38: document.getElementById('field38').value,
-                field39: document.getElementById('field39').value,
-                field40: document.getElementById('field40').value,
-                field41: document.getElementById('field41').value,
-                field42: document.getElementById('field42').value,
-                field43: document.getElementById('field43').value,
-                field44: document.getElementById('field44').value,
-                field45: document.getElementById('field45').value,
-                field46: document.getElementById('field46').value,
-                field47: document.getElementById('field47').value,
-                field48: document.getElementById('field48').value,
-                field49: document.getElementById('field49').value,
-                field50: document.getElementById('field50').value,
-                field51: document.getElementById('field51').value,
-                field52: document.getElementById('field52').value,
-                field53: document.getElementById('field53').value,
-                comments: document.getElementById('comments').value,
+                operator: getValue("operator"),
+                date: getValue("date"),
+                size: getValue("size"),
+                serialNumber: getValue("serialNumber"),
+                hourStart: getValue("hourStart"),
+                hourEnd: getValue("hourEnd"),
+                comments: getValue("comments")
             };
 
-            console.log("Sending data:", data);
+            for (let i = 1; i <= 53; i++) {
+                data[`field${i}`] = getValue(`field${i}`);
+            }
 
-            fetch(window.location.origin + '/inspection/pdf', {
+            fetch('/inspection/pdf', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(data)
             })
                 .then(res => {
-                    if (!res.ok) throw new Error("Server error");
+                    if (!res.ok) {
+                        throw new Error("Server error generating PDF");
+                    }
+
                     return res.blob();
                 })
                 .then(blob => {
                     const url = window.URL.createObjectURL(blob);
-
-                    // ✅ descarga compatible con celular
                     const a = document.createElement('a');
+
                     a.href = url;
                     a.download = 'inspection.pdf';
+
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
+
+                    window.URL.revokeObjectURL(url);
                 })
                 .catch(err => {
-                    console.error("Error:", err);
+                    console.error(err);
                     alert("Error generating PDF");
                 });
         }
 
-        document.getElementById('form-container').addEventListener('click', function (e) {
+        function clearForm() {
+            if (!confirm("Clear all inspection fields?")) return;
 
-            const rect = this.getBoundingClientRect();
+            document.getElementById("inspection-form").reset();
 
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            console.log("HTML CLICK → X:", Math.round(x), "Y:", Math.round(y));
-
-        });
-
-        document.addEventListener("DOMContentLoaded", function () {
-
-            const fields = document.querySelectorAll(".fieldX");
-
-            fields.forEach(field => {
-
-                // evita escribir manualmente
-                field.readOnly = true;
-
-                // cursor tipo botón
-                field.style.cursor = "pointer";
-
-                // click desktop + tap mobile
-                field.addEventListener("click", function () {
-
-                    // toggle X
-                    if (field.value === "X") {
-                        field.value = "";
-                    } else {
-                        field.value = "X";
-                    }
-
-                });
-
-            });
-
-        });
-
-        
-const comments = document.getElementById('comments');
-
-comments.addEventListener('input', function () {
-
-    while (comments.scrollHeight > comments.clientHeight) {
-        comments.value = comments.value.slice(0, -1);
-    }
-
-});
+            const today = new Date();
+            document.getElementById('date').value =
+                `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
     </script>
-
-
 
 </body>
 
