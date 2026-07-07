@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Maintenance Photos</title>
+
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: rgba(30, 41, 59, 0.9);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #6366f1;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --border: rgba(148, 163, 184, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      padding: 11px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #020617;
+      color: var(--text);
+      outline: none;
+    }
+
+    textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button,
+    .button {
+      border: none;
+      border-radius: 10px;
+      padding: 11px 15px;
+      background: var(--primary);
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button.secondary {
+      background: #334155;
+    }
+
+    .message {
+      margin-top: 12px;
+      color: var(--muted);
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .photo-card {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      display: block;
+      background: #111827;
+    }
+
+    .photo-info {
+      padding: 12px;
+    }
+
+    .photo-info h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      word-break: break-word;
+    }
+
+    .photo-info p {
+      margin: 4px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .photo-actions {
+      padding: 0 12px 12px;
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 14px;
+      }
+
+      .header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .gallery {
+        grid-template-columns: 1fr;
+      }
+
+      .photo-card img {
+        height: 260px;
+      }
+
+      button,
+      .button {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Maintenance Photos</h1>
+      <a class="button" href="/">Back to Dashboard</a>
+    </div>
+
+    <div class="card">
+      <h2>Take Photo</h2>
+      <p style="color: var(--muted);">
+        Use this option from your phone to open the camera.
+      </p>
+
+      <input id="cameraInput" type="file" accept="image/*,.heic,.heif" capture="environment" />
+    </div>
+
+    <div class="card">
+      <h2>Upload Images</h2>
+
+      <form id="uploadForm">
+        <div class="grid">
+          <div>
+            <label for="photos">Images</label>
+            <input id="photos" name="photos" type="file" accept="image/*,.heic,.heif" multiple required />
+          </div>
+
+          <div>
+            <label for="category">Category</label>
+            <select id="category" name="category">
+              <option value="">Select category</option>
+              <option value="Equipment">Equipment</option>
+              <option value="Building">Building</option>
+              <option value="Lawn">Lawn</option>
+              <option value="Inspection">Inspection</option>
+              <option value="Repair">Repair</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="asset">Asset</label>
+            <input id="asset" name="asset" placeholder="Example: John Deere S130" />
+          </div>
+
+          <div>
+            <label for="workOrder">Work Order</label>
+            <input id="workOrder" name="workOrder" placeholder="Example: WO-1005" />
+          </div>
+
+          <div>
+            <label for="location">Location</label>
+            <input id="location" name="location" placeholder="Example: Court 1" />
+          </div>
+
+          <div>
+            <label for="gpsStatus">GPS</label>
+            <input id="gpsStatus" value="Not requested yet" readonly />
+          </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+          <label for="description">Description</label>
+          <textarea id="description" name="description" placeholder="Write a short description..."></textarea>
+        </div>
+
+        <input type="hidden" id="gpsLat" name="gpsLat" />
+        <input type="hidden" id="gpsLng" name="gpsLng" />
+
+        <div class="actions">
+          <button type="button" class="secondary" id="gpsButton">
+            Add GPS Location
+          </button>
+
+          <button type="submit">
+            Upload Images
+          </button>
+        </div>
+
+        <div id="uploadMessage" class="message"></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="header">
+        <h2>My Images</h2>
+        <button class="secondary" id="refreshButton">Refresh</button>
+      </div>
+
+      <div id="gallery" class="gallery"></div>
+    </div>
+  </div>
+
+  <script src="/js/photos.js"></script>
+</body>
+
+</html>

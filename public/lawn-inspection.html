@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Lawn Mower Inspection</title>
+
+  <link rel="stylesheet" href="/css/lawn-inspection.css" />
+</head>
+
+<body>
+  <main class="page">
+    <section class="card">
+      <h1>Lawn Mower Maintenance Inspection</h1>
+
+      <form id="lawnInspectionForm">
+
+        <!-- TOP INFORMATION -->
+        <div class="form-grid">
+          <label>
+            Operator
+            <input type="text" id="operator" name="operator" placeholder="Operator name" />
+          </label>
+
+          <label>
+            Date
+            <input type="date" id="date" name="date" />
+          </label>
+
+          <label>
+            Equipment Type
+            <select id="equipmentType" name="equipmentType" required>
+              <option value="">Select type</option>
+              <option value="Riding Mower">Riding Mower</option>
+              <option value="Push Mower">Push Mower</option>
+            </select>
+          </label>
+
+          <label>
+            Brand
+            <select id="brand" name="brand" required>
+              <option value="">Select brand</option>
+              <option value="John Deere">John Deere</option>
+              <option value="Yard Machine">Yard Machine</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+
+          <label>
+            Model
+            <input type="text" id="model" name="model" placeholder="Model" />
+          </label>
+
+          <label>
+            Hours Start
+            <input type="text" id="hoursStart" name="hoursStart" placeholder="Hours start" />
+          </label>
+
+          <label>
+            Hours End
+            <input type="text" id="hoursEnd" name="hoursEnd" placeholder="Hours end" />
+          </label>
+        </div>
+
+        <!-- INSTRUCTIONS -->
+        <p class="instruction">
+          Use ✓ when the item is in good condition. Use ✕ when the item is damaged,
+          not working properly, or requires attention. Use N/A when the item does not apply.
+        </p>
+
+        <!-- GROUND / LOWER AREA -->
+        <section class="inspection-section">
+          <h2>From the Ground / Lower Area</h2>
+          <div id="groundItems" class="checklist"></div>
+        </section>
+
+        <!-- CONTROL AND SAFETY -->
+        <section class="inspection-section">
+          <h2>Control and Safety</h2>
+          <div id="controlItems" class="checklist"></div>
+        </section>
+
+        <!-- OPERATION -->
+        <section class="inspection-section">
+          <h2>Operation</h2>
+          <div id="operationItems" class="checklist"></div>
+        </section>
+
+        <!-- FLUIDS -->
+        <section class="inspection-section">
+          <h2>Fluids / Filters</h2>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Level</th>
+                  <th>Added/Replaced</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody id="fluidsTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- COMMENTS -->
+        <section class="inspection-section">
+          <h2>General Comments</h2>
+          <textarea
+            id="generalComments"
+            name="generalComments"
+            rows="4"
+            placeholder="Write general comments here..."
+          ></textarea>
+        </section>
+
+        <!-- SAFETY WARNING -->
+        <section class="warning">
+          If the observed condition of a component could affect safe operation,
+          DO NOT OPERATE.
+        </section>
+
+        <!-- SIGNATURES -->
+        <div class="form-grid">
+          <label>
+            Operator Signature
+            <input type="text" id="operatorSignature" placeholder="Operator signature" />
+          </label>
+
+          <label>
+            Supervisor Signature
+            <input type="text" id="supervisorSignature" placeholder="Supervisor signature" />
+          </label>
+        </div>
+
+        <!-- BUTTON -->
+        <div class="actions">
+          <button type="submit">Generate PDF</button>
+        </div>
+
+      </form>
+    </section>
+  </main>
+
+  <script src="/js/lawn-inspection.js"></script>
+</body>
+</html>

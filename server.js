@@ -8,15 +8,17 @@ const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const { requireAuth } = require('./middleware/auth.middleware');
 const inspectionRoutes = require('./inspection/inspection.routes');
+const lawnInspectionRoutes = require("./routes/lawn-inspection.routes");
+const path = require("path");
 
 const app = express();
 
 const PORT = process.env.PORT || 3000;       // ✅ define port
 const MONGO_URI = process.env.MONGO_URI;     // ✅ toma del .env
+const photoRoutes = require("./routes/photo.Routes");
 
 app.use(cors());
 app.use(express.json());
-const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
@@ -24,6 +26,8 @@ app.get('/health', (req, res) => res.status(200).send('OK'));
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/inspection', inspectionRoutes);
+app.use('/api/lawn-inspection', lawnInspectionRoutes);
+app.use("/api/photos", photoRoutes);
 
 // Connect Mongo
 mongoose.connect(MONGO_URI)
@@ -146,6 +150,10 @@ app.delete('/api/hours/:id', requireAuth, async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete data' });
     }
+});
+
+app.get("/photos", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "photos.html"));
 });
 
 app.listen(PORT, () => {
