@@ -1,3 +1,8 @@
+const token = localStorage.getItem("token");
+
+if (!token) {
+  window.location.href = "/login.html";
+}
 const uploadForm = document.getElementById("uploadForm");
 const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
@@ -92,6 +97,12 @@ async function loadMyPhotos() {
     });
 
     const data = await response.json();
+
+    if (response.status === 401) {
+      localStorage.removeItem("token");
+      window.location.href = "/login.html";
+      return;
+    }
 
     if (!response.ok || !data.ok) {
       throw new Error(data.message || "Could not load photos.");
