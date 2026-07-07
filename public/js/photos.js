@@ -1,3 +1,4 @@
+console.log("photos.js version 4 loaded");
 const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
 const refreshButton = document.getElementById("refreshButton");
