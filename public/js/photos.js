@@ -1,31 +1,3 @@
-async function protectPhotosPage() {
-  const token = localStorage.getItem("token");
-
-  if (!token) {
-    window.location.replace("/login.html");
-    return false;
-  }
-
-  try {
-    const response = await fetch("/api/photos/my", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      localStorage.removeItem("token");
-      window.location.replace("/login.html");
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    localStorage.removeItem("token");
-    window.location.replace("/login.html");
-    return false;
-  }
-}
 const uploadForm = document.getElementById("uploadForm");
 const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
@@ -41,6 +13,21 @@ function getToken() {
   return localStorage.getItem("token");
 }
 
+function redirectToLogin() {
+  window.location.replace("/login.html");
+}
+
+function requireLogin() {
+  const token = getToken();
+
+  if (!token) {
+    redirectToLogin();
+    return false;
+  }
+
+  return true;
+}
+
 function getAuthHeaders() {
   const token = getToken();
 
@@ -51,6 +38,36 @@ function getAuthHeaders() {
   return {
     Authorization: `Bearer ${token}`,
   };
+}
+
+async function protectPhotosPage() {
+  const token = getToken();
+
+  if (!token) {
+    redirectToLogin();
+    return false;
+  }
+
+  try {
+    const response = await fetch("/api/photos/my", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+      redirectToLogin();
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Auth check error:", error);
+    localStorage.removeItem("token");
+    redirectToLogin();
+    return false;
+  }
 }
 
 function formatDate(dateString) {
@@ -81,6 +98,12 @@ async function getProtectedImageUrl(photoId) {
     },
   });
 
+  if (response.status === 401 || response.status === 403) {
+    localStorage.removeItem("token");
+    redirectToLogin();
+    throw new Error("You must login first.");
+  }
+
   if (!response.ok) {
     throw new Error("Could not load image.");
   }
@@ -100,17 +123,11 @@ async function loadImageIntoElement(photoId, imgElement) {
 }
 
 async function loadMyPhotos() {
-  gallery.innerHTML = "<p>Loading images...</p>";
-
-  const token = getToken();
-
-  if (!token) {
-    gallery.innerHTML = `
-      <p>You must login first.</p>
-      <a class="button" href="/login.html">Go to Login</a>
-    `;
+  if (!requireLogin()) {
     return;
   }
+
+  gallery.innerHTML = "<p>Loading images...</p>";
 
   try {
     const response = await fetch("/api/photos/my", {
@@ -119,13 +136,13 @@ async function loadMyPhotos() {
       },
     });
 
-    const data = await response.json();
-
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       localStorage.removeItem("token");
-      window.location.href = "/login.html";
+      redirectToLogin();
       return;
     }
+
+    const data = await response.json();
 
     if (!response.ok || !data.ok) {
       throw new Error(data.message || "Could not load photos.");
@@ -142,8 +159,8 @@ async function loadMyPhotos() {
       .map((photo) => {
         return `
           <div class="photo-card">
-            <img 
-              id="photo-img-${photo._id}" 
+            <img
+              id="photo-img-${photo._id}"
               alt="${escapeHtml(photo.originalName)}"
             />
 
@@ -181,6 +198,10 @@ async function loadMyPhotos() {
 }
 
 async function deletePhoto(photoId) {
+  if (!requireLogin()) {
+    return;
+  }
+
   const confirmed = confirm("Are you sure you want to delete this photo?");
 
   if (!confirmed) {
@@ -194,6 +215,12 @@ async function deletePhoto(photoId) {
         ...getAuthHeaders(),
       },
     });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+      redirectToLogin();
+      return;
+    }
 
     const result = await response.json();
 
@@ -251,9 +278,7 @@ cameraInput.addEventListener("change", () => {
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const token = getToken();
-
-  if (!token) {
+  if (!requireLogin()) {
     uploadMessage.textContent = "You must login first.";
     return;
   }
@@ -270,6 +295,13 @@ uploadForm.addEventListener("submit", async (event) => {
         ...getAuthHeaders(),
       },
     });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+      uploadMessage.textContent = "You must login first.";
+      redirectToLogin();
+      return;
+    }
 
     const result = await response.json();
 
