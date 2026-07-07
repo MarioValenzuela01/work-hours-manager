@@ -79,6 +79,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function setMessage(message) {
+  uploadMessage.textContent = message;
+}
+
 async function getProtectedImageUrl(photoId) {
   const response = await fetch(`/api/photos/${photoId}/file`, {
     headers: {
@@ -117,7 +121,7 @@ async function uploadFiles(fileList) {
     formData.append("photos", file);
   });
 
-  uploadMessage.textContent = "Uploading image...";
+  setMessage("Uploading and converting image...");
 
   try {
     const response = await fetch("/api/photos/upload", {
@@ -130,7 +134,7 @@ async function uploadFiles(fileList) {
 
     if (response.status === 401 || response.status === 403) {
       localStorage.removeItem("token");
-      uploadMessage.textContent = "You must login first.";
+      setMessage("You must login first.");
       redirectToLogin();
       return;
     }
@@ -141,15 +145,17 @@ async function uploadFiles(fileList) {
       throw new Error(result.message || "Upload failed.");
     }
 
-    uploadMessage.textContent = `${result.count} image(s) uploaded successfully.`;
+    setMessage("Image uploaded. Updating gallery...");
 
     cameraInput.value = "";
     photosInput.value = "";
 
     await loadMyPhotos();
+
+    setMessage(`${result.count} image(s) uploaded successfully.`);
   } catch (error) {
     console.error("Upload error:", error);
-    uploadMessage.textContent = error.message;
+    setMessage(error.message);
   }
 }
 
@@ -158,7 +164,7 @@ async function loadMyPhotos() {
     return;
   }
 
-  gallery.innerHTML = "<p>Loading images...</p>";
+  gallery.innerHTML = "<p>Updating gallery...</p>";
 
   try {
     const response = await fetch("/api/photos/my", {
@@ -189,31 +195,60 @@ async function loadMyPhotos() {
     gallery.innerHTML = photos
       .map((photo) => {
         return `
-          <img
-            id="photo-img-${photo._id}"
-            class="photo-thumb"
-            alt="${escapeHtml(photo.originalName)}"
-            data-photo-id="${photo._id}"
-          />
+          <div class="thumb-wrapper" id="thumb-wrapper-${photo._id}">
+            <div class="thumb-loading">Loading...</div>
+            <img
+              id="photo-img-${photo._id}"
+              class="photo-thumb"
+              alt="${escapeHtml(photo.originalName)}"
+              data-photo-id="${photo._id}"
+              style="display: none;"
+            />
+          </div>
         `;
       })
       .join("");
 
     for (const photo of photos) {
-      const imgElement = document.getElementById(`photo-img-${photo._id}`);
-
-      if (imgElement) {
-        const imageUrl = await getProtectedImageUrl(photo._id);
-        imgElement.src = imageUrl;
-
-        imgElement.addEventListener("click", () => {
-          openImageModal(imageUrl);
-        });
-      }
+      await loadSingleThumbnail(photo);
     }
   } catch (error) {
     console.error(error);
     gallery.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function loadSingleThumbnail(photo) {
+  const imgElement = document.getElementById(`photo-img-${photo._id}`);
+  const wrapper = document.getElementById(`thumb-wrapper-${photo._id}`);
+
+  if (!imgElement || !wrapper) {
+    return;
+  }
+
+  try {
+    const imageUrl = await getProtectedImageUrl(photo._id);
+
+    imgElement.src = imageUrl;
+    imgElement.style.display = "block";
+
+    const loadingElement = wrapper.querySelector(".thumb-loading");
+
+    if (loadingElement) {
+      loadingElement.remove();
+    }
+
+    imgElement.addEventListener("click", () => {
+      openImageModal(imageUrl);
+    });
+  } catch (error) {
+    console.error("Thumbnail load error:", error);
+
+    wrapper.innerHTML = `
+      <div class="thumb-error">
+        Image could not load
+      </div>
+    `;
   }
 }
 
@@ -235,7 +270,10 @@ photosInput.addEventListener("change", () => {
   uploadFiles(photosInput.files);
 });
 
-refreshButton.addEventListener("click", loadMyPhotos);
+refreshButton.addEventListener("click", () => {
+  setMessage("Updating gallery...");
+  loadMyPhotos();
+});
 
 closeModalButton.addEventListener("click", closeImageModal);
 
@@ -253,6 +291,7 @@ document.addEventListener("keydown", (event) => {
 
 protectPhotosPage().then((isAllowed) => {
   if (isAllowed) {
+    setMessage("Updating gallery...");
     loadMyPhotos();
   }
 });

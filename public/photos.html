@@ -255,6 +255,39 @@
         right: 8px;
       }
     }
+
+    .thumb-wrapper {
+      position: relative;
+      width: 100%;
+      height: 210px;
+      border-radius: 14px;
+      background: #111827;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .thumb-loading,
+    .thumb-error {
+      width: 100%;
+      height: 100%;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 12px;
+      font-size: 14px;
+    }
+
+    .thumb-error {
+      color: #fca5a5;
+    }
+
+    @media (max-width: 760px) {
+      .thumb-wrapper {
+        height: 170px;
+      }
+    }
   </style>
 </head>
 
