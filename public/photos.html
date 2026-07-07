@@ -7,6 +7,14 @@
 
   <title>Maintenance Photos</title>
 
+  <script>
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      window.location.replace("/login.html");
+    }
+  </script>
+
   <style>
     :root {
       --bg: #0f172a;
@@ -15,7 +23,6 @@
       --muted: #94a3b8;
       --primary: #6366f1;
       --danger: #ef4444;
-      --success: #22c55e;
       --border: rgba(148, 163, 184, 0.25);
     }
 
@@ -49,6 +56,19 @@
       font-size: 28px;
     }
 
+    .button,
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 16px;
+      background: var(--primary);
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-block;
+    }
+
     .card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -58,108 +78,138 @@
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
     }
 
-    .grid {
+    .photo-options {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
+      gap: 18px;
     }
 
-    label {
-      display: block;
-      font-size: 14px;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    input,
-    textarea,
-    select {
-      width: 100%;
-      padding: 11px;
-      border-radius: 10px;
+    .photo-option {
+      min-height: 210px;
+      border-radius: 20px;
       border: 1px solid var(--border);
       background: #020617;
       color: var(--text);
-      outline: none;
-    }
-
-    textarea {
-      min-height: 80px;
-      resize: vertical;
-    }
-
-    .actions {
       display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 14px;
-    }
-
-    button,
-    .button {
-      border: none;
-      border-radius: 10px;
-      padding: 11px 15px;
-      background: var(--primary);
-      color: white;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 14px;
       cursor: pointer;
-      font-weight: 700;
-      text-decoration: none;
-      display: inline-block;
+      transition: transform 0.15s ease, border-color 0.15s ease;
     }
 
-    button.danger {
-      background: var(--danger);
+    .photo-option:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
     }
 
-    button.secondary {
-      background: #334155;
+    .photo-option-icon {
+      font-size: 64px;
+      line-height: 1;
+    }
+
+    .photo-option-title {
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .photo-option-subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 0 12px;
     }
 
     .message {
-      margin-top: 12px;
+      margin-top: 14px;
       color: var(--muted);
+    }
+
+    .hidden-input {
+      display: none;
+    }
+
+    .gallery-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .gallery-header h2 {
+      margin: 0;
     }
 
     .gallery {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
     }
 
-    .photo-card {
-      background: #020617;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-    }
-
-    .photo-card img {
+    .photo-thumb {
       width: 100%;
-      height: 220px;
+      height: 210px;
       object-fit: cover;
       display: block;
+      border-radius: 14px;
       background: #111827;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform 0.15s ease, border-color 0.15s ease;
     }
 
-    .photo-info {
-      padding: 12px;
+    .photo-thumb:hover {
+      transform: scale(1.02);
+      border-color: var(--primary);
     }
 
-    .photo-info h3 {
-      margin: 0 0 8px;
-      font-size: 15px;
-      word-break: break-word;
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 9999;
+      padding: 18px;
+      align-items: center;
+      justify-content: center;
     }
 
-    .photo-info p {
-      margin: 4px 0;
-      color: var(--muted);
-      font-size: 13px;
+    .modal.open {
+      display: flex;
     }
 
-    .photo-actions {
-      padding: 0 12px 12px;
+    .modal-content {
+      position: relative;
+      max-width: 96vw;
+      max-height: 92vh;
+    }
+
+    .modal-content img {
+      max-width: 96vw;
+      max-height: 92vh;
+      border-radius: 14px;
+      display: block;
+      background: #020617;
+    }
+
+    .close-modal {
+      position: absolute;
+      top: -14px;
+      right: -14px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--danger);
+      color: white;
+      font-size: 24px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      border: none;
     }
 
     @media (max-width: 760px) {
@@ -167,27 +217,38 @@
         padding: 14px;
       }
 
-      .header {
+      .header,
+      .gallery-header {
         flex-direction: column;
         align-items: stretch;
       }
 
-      .grid {
+      .button,
+      button {
+        width: 100%;
+        text-align: center;
+      }
+
+      .photo-options {
         grid-template-columns: 1fr;
+      }
+
+      .photo-option {
+        min-height: 190px;
       }
 
       .gallery {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
       }
 
-      .photo-card img {
-        height: 260px;
+      .photo-thumb {
+        height: 170px;
       }
 
-      button,
-      .button {
-        width: 100%;
-        text-align: center;
+      .close-modal {
+        top: 8px;
+        right: 8px;
       }
     }
   </style>
@@ -201,87 +262,53 @@
     </div>
 
     <div class="card">
-      <h2>Take Photo</h2>
-      <p style="color: var(--muted);">
-        Use this option from your phone to open the camera.
-      </p>
+      <div class="photo-options">
+        <button class="photo-option" type="button" id="takePhotoButton">
+          <div class="photo-option-icon">📷</div>
+          <div class="photo-option-title">Take Photo</div>
+          <div class="photo-option-subtitle">Open the camera from your phone</div>
+        </button>
 
-      <input id="cameraInput" type="file" accept="image/*,.heic,.heif" capture="environment" />
+        <button class="photo-option" type="button" id="selectPhotoButton">
+          <div class="photo-option-icon">🖼️</div>
+          <div class="photo-option-title">Select Photo</div>
+          <div class="photo-option-subtitle">Choose images from your phone or computer</div>
+        </button>
+      </div>
+
+      <input
+        id="cameraInput"
+        class="hidden-input"
+        type="file"
+        accept="image/*,.heic,.heif"
+        capture="environment"
+      />
+
+      <input
+        id="photosInput"
+        class="hidden-input"
+        type="file"
+        accept="image/*,.heic,.heif"
+        multiple
+      />
+
+      <div id="uploadMessage" class="message"></div>
     </div>
 
     <div class="card">
-      <h2>Upload Images</h2>
-
-      <form id="uploadForm">
-        <div class="grid">
-          <div>
-            <label for="photos">Images</label>
-            <input id="photos" name="photos" type="file" accept="image/*,.heic,.heif" multiple required />
-          </div>
-
-          <div>
-            <label for="category">Category</label>
-            <select id="category" name="category">
-              <option value="">Select category</option>
-              <option value="Equipment">Equipment</option>
-              <option value="Building">Building</option>
-              <option value="Lawn">Lawn</option>
-              <option value="Inspection">Inspection</option>
-              <option value="Repair">Repair</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          <div>
-            <label for="asset">Asset</label>
-            <input id="asset" name="asset" placeholder="Example: John Deere S130" />
-          </div>
-
-          <div>
-            <label for="workOrder">Work Order</label>
-            <input id="workOrder" name="workOrder" placeholder="Example: WO-1005" />
-          </div>
-
-          <div>
-            <label for="location">Location</label>
-            <input id="location" name="location" placeholder="Example: Court 1" />
-          </div>
-
-          <div>
-            <label for="gpsStatus">GPS</label>
-            <input id="gpsStatus" value="Not requested yet" readonly />
-          </div>
-        </div>
-
-        <div style="margin-top: 14px;">
-          <label for="description">Description</label>
-          <textarea id="description" name="description" placeholder="Write a short description..."></textarea>
-        </div>
-
-        <input type="hidden" id="gpsLat" name="gpsLat" />
-        <input type="hidden" id="gpsLng" name="gpsLng" />
-
-        <div class="actions">
-          <button type="button" class="secondary" id="gpsButton">
-            Add GPS Location
-          </button>
-
-          <button type="submit">
-            Upload Images
-          </button>
-        </div>
-
-        <div id="uploadMessage" class="message"></div>
-      </form>
-    </div>
-
-    <div class="card">
-      <div class="header">
+      <div class="gallery-header">
         <h2>My Images</h2>
-        <button class="secondary" id="refreshButton">Refresh</button>
+        <button type="button" id="refreshButton">Refresh</button>
       </div>
 
       <div id="gallery" class="gallery"></div>
+    </div>
+  </div>
+
+  <div id="imageModal" class="modal">
+    <div class="modal-content">
+      <button type="button" id="closeModalButton" class="close-modal">×</button>
+      <img id="modalImage" alt="Large preview" />
     </div>
   </div>
 

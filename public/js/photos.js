@@ -1,13 +1,16 @@
-const uploadForm = document.getElementById("uploadForm");
 const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
 const refreshButton = document.getElementById("refreshButton");
-const gpsButton = document.getElementById("gpsButton");
-const gpsStatus = document.getElementById("gpsStatus");
-const gpsLat = document.getElementById("gpsLat");
-const gpsLng = document.getElementById("gpsLng");
+
+const takePhotoButton = document.getElementById("takePhotoButton");
+const selectPhotoButton = document.getElementById("selectPhotoButton");
+
 const cameraInput = document.getElementById("cameraInput");
-const photosInput = document.getElementById("photos");
+const photosInput = document.getElementById("photosInput");
+
+const imageModal = document.getElementById("imageModal");
+const modalImage = document.getElementById("modalImage");
+const closeModalButton = document.getElementById("closeModalButton");
 
 function getToken() {
   return localStorage.getItem("token");
@@ -70,18 +73,6 @@ async function protectPhotosPage() {
   }
 }
 
-function formatDate(dateString) {
-  const date = new Date(dateString);
-
-  return date.toLocaleString("en-CA", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -112,13 +103,56 @@ async function getProtectedImageUrl(photoId) {
   return URL.createObjectURL(blob);
 }
 
-async function loadImageIntoElement(photoId, imgElement) {
+async function uploadFiles(fileList) {
+  if (!requireLogin()) {
+    return;
+  }
+
+  const files = Array.from(fileList || []);
+
+  if (files.length === 0) {
+    return;
+  }
+
+  const formData = new FormData();
+
+  files.forEach((file) => {
+    formData.append("photos", file);
+  });
+
+  uploadMessage.textContent = "Uploading image...";
+
   try {
-    const imageUrl = await getProtectedImageUrl(photoId);
-    imgElement.src = imageUrl;
+    const response = await fetch("/api/photos/upload", {
+      method: "POST",
+      body: formData,
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+      uploadMessage.textContent = "You must login first.";
+      redirectToLogin();
+      return;
+    }
+
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.message || "Upload failed.");
+    }
+
+    uploadMessage.textContent = `${result.count} image(s) uploaded successfully.`;
+
+    cameraInput.value = "";
+    photosInput.value = "";
+
+    await loadMyPhotos();
   } catch (error) {
-    console.error("Image load error:", error);
-    imgElement.alt = "Image could not be loaded";
+    console.error("Upload error:", error);
+    uploadMessage.textContent = error.message;
   }
 }
 
@@ -158,28 +192,12 @@ async function loadMyPhotos() {
     gallery.innerHTML = photos
       .map((photo) => {
         return `
-          <div class="photo-card">
-            <img
-              id="photo-img-${photo._id}"
-              alt="${escapeHtml(photo.originalName)}"
-            />
-
-            <div class="photo-info">
-              <h3>${escapeHtml(photo.originalName)}</h3>
-              <p><strong>Date:</strong> ${formatDate(photo.createdAt)}</p>
-              <p><strong>Category:</strong> ${escapeHtml(photo.category || "N/A")}</p>
-              <p><strong>Asset:</strong> ${escapeHtml(photo.asset || "N/A")}</p>
-              <p><strong>Work Order:</strong> ${escapeHtml(photo.workOrder || "N/A")}</p>
-              <p><strong>Location:</strong> ${escapeHtml(photo.location || "N/A")}</p>
-              <p>${escapeHtml(photo.description || "")}</p>
-            </div>
-
-            <div class="photo-actions">
-              <button class="danger" onclick="deletePhoto('${photo._id}')">
-                Delete
-              </button>
-            </div>
-          </div>
+          <img
+            id="photo-img-${photo._id}"
+            class="photo-thumb"
+            alt="${escapeHtml(photo.originalName)}"
+            data-photo-id="${photo._id}"
+          />
         `;
       })
       .join("");
@@ -188,7 +206,12 @@ async function loadMyPhotos() {
       const imgElement = document.getElementById(`photo-img-${photo._id}`);
 
       if (imgElement) {
-        await loadImageIntoElement(photo._id, imgElement);
+        const imageUrl = await getProtectedImageUrl(photo._id);
+        imgElement.src = imageUrl;
+
+        imgElement.addEventListener("click", () => {
+          openImageModal(imageUrl);
+        });
       }
     }
   } catch (error) {
@@ -197,131 +220,47 @@ async function loadMyPhotos() {
   }
 }
 
-async function deletePhoto(photoId) {
-  if (!requireLogin()) {
-    return;
-  }
-
-  const confirmed = confirm("Are you sure you want to delete this photo?");
-
-  if (!confirmed) {
-    return;
-  }
-
-  try {
-    const response = await fetch(`/api/photos/${photoId}`, {
-      method: "DELETE",
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      localStorage.removeItem("token");
-      redirectToLogin();
-      return;
-    }
-
-    const result = await response.json();
-
-    if (!response.ok || !result.ok) {
-      throw new Error(result.message || "Could not delete photo.");
-    }
-
-    await loadMyPhotos();
-  } catch (error) {
-    alert(error.message);
-  }
+function openImageModal(imageUrl) {
+  modalImage.src = imageUrl;
+  imageModal.classList.add("open");
 }
 
-gpsButton.addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    gpsStatus.value = "GPS not available";
-    return;
-  }
+function closeImageModal() {
+  imageModal.classList.remove("open");
+  modalImage.src = "";
+}
 
-  gpsStatus.value = "Requesting GPS...";
+takePhotoButton.addEventListener("click", () => {
+  cameraInput.click();
+});
 
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      gpsLat.value = position.coords.latitude;
-      gpsLng.value = position.coords.longitude;
-      gpsStatus.value = "GPS added";
-    },
-    () => {
-      gpsStatus.value = "GPS permission denied";
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0,
-    }
-  );
+selectPhotoButton.addEventListener("click", () => {
+  photosInput.click();
 });
 
 cameraInput.addEventListener("change", () => {
-  if (cameraInput.files.length > 0) {
-    const dataTransfer = new DataTransfer();
-
-    for (const file of photosInput.files) {
-      dataTransfer.items.add(file);
-    }
-
-    dataTransfer.items.add(cameraInput.files[0]);
-
-    photosInput.files = dataTransfer.files;
-
-    uploadMessage.textContent = "Camera photo added. Press Upload Images to save.";
-  }
+  uploadFiles(cameraInput.files);
 });
 
-uploadForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  if (!requireLogin()) {
-    uploadMessage.textContent = "You must login first.";
-    return;
-  }
-
-  const formData = new FormData(uploadForm);
-
-  uploadMessage.textContent = "Uploading images...";
-
-  try {
-    const response = await fetch("/api/photos/upload", {
-      method: "POST",
-      body: formData,
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      localStorage.removeItem("token");
-      uploadMessage.textContent = "You must login first.";
-      redirectToLogin();
-      return;
-    }
-
-    const result = await response.json();
-
-    if (!response.ok || !result.ok) {
-      throw new Error(result.message || "Upload failed.");
-    }
-
-    uploadMessage.textContent = `${result.count} image(s) uploaded successfully.`;
-
-    uploadForm.reset();
-    cameraInput.value = "";
-    gpsStatus.value = "Not requested yet";
-
-    await loadMyPhotos();
-  } catch (error) {
-    uploadMessage.textContent = error.message;
-  }
+photosInput.addEventListener("change", () => {
+  uploadFiles(photosInput.files);
 });
 
 refreshButton.addEventListener("click", loadMyPhotos);
+
+closeModalButton.addEventListener("click", closeImageModal);
+
+imageModal.addEventListener("click", (event) => {
+  if (event.target === imageModal) {
+    closeImageModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeImageModal();
+  }
+});
 
 protectPhotosPage().then((isAllowed) => {
   if (isAllowed) {
