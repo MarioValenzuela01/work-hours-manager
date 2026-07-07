@@ -1,7 +1,30 @@
-const token = localStorage.getItem("token");
+async function protectPhotosPage() {
+  const token = localStorage.getItem("token");
 
-if (!token) {
-  window.location.href = "/login.html";
+  if (!token) {
+    window.location.replace("/login.html");
+    return false;
+  }
+
+  try {
+    const response = await fetch("/api/photos/my", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+      window.location.replace("/login.html");
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    localStorage.removeItem("token");
+    window.location.replace("/login.html");
+    return false;
+  }
 }
 const uploadForm = document.getElementById("uploadForm");
 const uploadMessage = document.getElementById("uploadMessage");
@@ -268,4 +291,8 @@ uploadForm.addEventListener("submit", async (event) => {
 
 refreshButton.addEventListener("click", loadMyPhotos);
 
-loadMyPhotos();
+protectPhotosPage().then((isAllowed) => {
+  if (isAllowed) {
+    loadMyPhotos();
+  }
+});
