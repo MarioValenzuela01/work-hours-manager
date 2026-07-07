@@ -288,6 +288,22 @@
         height: 170px;
       }
     }
+
+    .delete-modal-button {
+      margin-top: 12px;
+      width: 100%;
+      background: var(--danger);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .delete-modal-button:hover {
+      opacity: 0.9;
+    }
   </style>
 </head>
 
@@ -333,7 +349,12 @@
   <div id="imageModal" class="modal">
     <div class="modal-content">
       <button type="button" id="closeModalButton" class="close-modal">×</button>
+
       <img id="modalImage" alt="Large preview" />
+
+      <button type="button" id="deleteModalButton" class="delete-modal-button">
+        Delete Photo
+      </button>
     </div>
   </div>
 

@@ -9,6 +9,9 @@ const photosInput = document.getElementById("photosInput");
 const imageModal = document.getElementById("imageModal");
 const modalImage = document.getElementById("modalImage");
 const closeModalButton = document.getElementById("closeModalButton");
+const deleteModalButton = document.getElementById("deleteModalButton");
+
+let selectedPhotoId = null;
 
 function getToken() {
   return localStorage.getItem("token");
@@ -240,7 +243,7 @@ async function loadSingleThumbnail(photo) {
     }
 
     imgElement.addEventListener("click", () => {
-      openImageModal(imageUrl);
+      openImageModal(imageUrl, photo._id);
     });
   } catch (error) {
     console.error("Thumbnail load error:", error);
@@ -253,7 +256,8 @@ async function loadSingleThumbnail(photo) {
   }
 }
 
-function openImageModal(imageUrl) {
+function openImageModal(imageUrl, photoId) {
+  selectedPhotoId = photoId;
   modalImage.src = imageUrl;
   imageModal.classList.add("open");
 }
@@ -261,6 +265,54 @@ function openImageModal(imageUrl) {
 function closeImageModal() {
   imageModal.classList.remove("open");
   modalImage.src = "";
+  selectedPhotoId = null;
+}
+
+async function deleteSelectedPhoto() {
+  if (!selectedPhotoId) {
+    return;
+  }
+
+  const confirmed = confirm("Are you sure you want to delete this photo?");
+
+  if (!confirmed) {
+    return;
+  }
+
+  setMessage("Deleting photo...");
+
+  try {
+    const response = await fetch(`/api/photos/${selectedPhotoId}`, {
+      method: "DELETE",
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("token");
+      setMessage("You must login first.");
+      redirectToLogin();
+      return;
+    }
+
+    const result = await response.json();
+
+    if (!response.ok || !result.ok) {
+      throw new Error(result.message || "Could not delete photo.");
+    }
+
+    closeImageModal();
+
+    setMessage("Photo deleted. Updating gallery...");
+
+    await loadMyPhotos();
+
+    setMessage("Photo deleted successfully.");
+  } catch (error) {
+    console.error("Delete error:", error);
+    setMessage(error.message);
+  }
 }
 
 cameraInput.addEventListener("change", () => {
@@ -277,6 +329,8 @@ refreshButton.addEventListener("click", () => {
 });
 
 closeModalButton.addEventListener("click", closeImageModal);
+
+deleteModalButton.addEventListener("click", deleteSelectedPhoto);
 
 imageModal.addEventListener("click", (event) => {
   if (event.target === imageModal) {
