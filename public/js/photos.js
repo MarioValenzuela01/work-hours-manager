@@ -1,4 +1,4 @@
-console.log("photos.js version 4 loaded");
+console.log("photos.js version 5 loaded");
 const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
 const refreshButton = document.getElementById("refreshButton");
@@ -268,8 +268,17 @@ function closeImageModal() {
   selectedPhotoId = null;
 }
 
-async function deleteSelectedPhoto() {
+async function deleteSelectedPhoto(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  console.log("Selected photo to delete:", selectedPhotoId);
+
   if (!selectedPhotoId) {
+    setMessage("No photo selected.");
+    alert("No photo selected.");
     return;
   }
 
@@ -298,6 +307,8 @@ async function deleteSelectedPhoto() {
 
     const result = await response.json();
 
+    console.log("Delete response:", result);
+
     if (!response.ok || !result.ok) {
       throw new Error(result.message || "Could not delete photo.");
     }
@@ -312,6 +323,7 @@ async function deleteSelectedPhoto() {
   } catch (error) {
     console.error("Delete error:", error);
     setMessage(error.message);
+    alert(error.message);
   }
 }
 
@@ -330,7 +342,9 @@ refreshButton.addEventListener("click", () => {
 
 closeModalButton.addEventListener("click", closeImageModal);
 
-deleteModalButton.addEventListener("click", deleteSelectedPhoto);
+deleteModalButton.addEventListener("click", (event) => {
+  deleteSelectedPhoto(event);
+});
 
 imageModal.addEventListener("click", (event) => {
   if (event.target === imageModal) {

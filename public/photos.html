@@ -173,47 +173,65 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.88);
+      background: rgba(0, 0, 0, 0.9);
       z-index: 9999;
-      padding: 18px;
-      align-items: center;
-      justify-content: center;
+      padding: 24px;
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .modal.open {
-      display: flex;
+      display: block;
     }
 
     .modal-content {
       position: relative;
-      max-width: 96vw;
-      max-height: 92vh;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding-bottom: 40px;
     }
 
     .modal-content img {
-      max-width: 96vw;
-      max-height: 92vh;
-      border-radius: 14px;
+      width: 100%;
+      height: auto;
       display: block;
+      border-radius: 14px;
       background: #020617;
     }
 
     .close-modal {
-      position: absolute;
-      top: -14px;
-      right: -14px;
-      width: 42px;
-      height: 42px;
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      width: 44px;
+      height: 44px;
       border-radius: 50%;
       background: var(--danger);
       color: white;
-      font-size: 24px;
+      font-size: 26px;
       font-weight: bold;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       border: none;
+      z-index: 10000;
+    }
+
+    .delete-modal-button {
+      margin-top: 14px;
+      width: 100%;
+      background: var(--danger);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .delete-modal-button:hover {
+      opacity: 0.9;
     }
 
     @media (max-width: 760px) {
@@ -288,22 +306,6 @@
         height: 170px;
       }
     }
-
-    .delete-modal-button {
-      margin-top: 12px;
-      width: 100%;
-      background: var(--danger);
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 13px 16px;
-      font-weight: 800;
-      cursor: pointer;
-    }
-
-    .delete-modal-button:hover {
-      opacity: 0.9;
-    }
   </style>
 </head>
 
@@ -358,7 +360,7 @@
     </div>
   </div>
 
-  <script src="/js/photos.js?v=4"></script>
+  <script src="/js/photos.js?v=5"></script>
 </body>
 
 </html>
