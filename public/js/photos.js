@@ -2,9 +2,6 @@ const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
 const refreshButton = document.getElementById("refreshButton");
 
-const takePhotoButton = document.getElementById("takePhotoButton");
-const selectPhotoButton = document.getElementById("selectPhotoButton");
-
 const cameraInput = document.getElementById("cameraInput");
 const photosInput = document.getElementById("photosInput");
 
@@ -229,14 +226,6 @@ function closeImageModal() {
   imageModal.classList.remove("open");
   modalImage.src = "";
 }
-
-takePhotoButton.addEventListener("click", () => {
-  cameraInput.click();
-});
-
-selectPhotoButton.addEventListener("click", () => {
-  photosInput.click();
-});
 
 cameraInput.addEventListener("change", () => {
   uploadFiles(cameraInput.files);

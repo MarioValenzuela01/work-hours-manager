@@ -126,8 +126,12 @@
       color: var(--muted);
     }
 
-    .hidden-input {
-      display: none;
+    .file-input-hidden {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
     }
 
     .gallery-header {
@@ -263,34 +267,22 @@
 
     <div class="card">
       <div class="photo-options">
-        <button class="photo-option" type="button" id="takePhotoButton">
+        <label class="photo-option" for="cameraInput">
           <div class="photo-option-icon">📷</div>
           <div class="photo-option-title">Take Photo</div>
           <div class="photo-option-subtitle">Open the camera from your phone</div>
-        </button>
+        </label>
 
-        <button class="photo-option" type="button" id="selectPhotoButton">
+        <label class="photo-option" for="photosInput">
           <div class="photo-option-icon">🖼️</div>
           <div class="photo-option-title">Select Photo</div>
           <div class="photo-option-subtitle">Choose images from your phone or computer</div>
-        </button>
+        </label>
       </div>
 
-      <input
-        id="cameraInput"
-        class="hidden-input"
-        type="file"
-        accept="image/*,.heic,.heif"
-        capture="environment"
-      />
+      <input id="cameraInput" class="file-input-hidden" type="file" accept="image/*" capture="environment" />
 
-      <input
-        id="photosInput"
-        class="hidden-input"
-        type="file"
-        accept="image/*,.heic,.heif"
-        multiple
-      />
+      <input id="photosInput" class="file-input-hidden" type="file" accept="image/*,.heic,.heif" multiple />
 
       <div id="uploadMessage" class="message"></div>
     </div>
