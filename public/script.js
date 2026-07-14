@@ -334,10 +334,10 @@ document.addEventListener('DOMContentLoaded', () => {
         d.setDate(diff);
         d.setHours(0, 0, 0, 0);
         return d;
-    }
+    } 
 
     function formatDateShort(date) {
-        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+        return date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
     }
 
     window.deleteEntry = async (id) => {
@@ -486,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function formatDate(dateString) {
-        const options = { weekday: 'short', day: 'numeric', month: 'short' };
+        const options = { weekday: 'short', day: 'numeric', month: 'short', yeaqr: 'numeric' };
         // Validar y prevenir problemas de timezone agregando T00:00:00
         const date = new Date(`${dateString}T00:00:00`);
         return date.toLocaleDateString('en-US', options);
@@ -566,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const durationStr = formatDuration(duration);
                 // We use en-US format to make the output match English convention
                 const entryDateObj = new Date(`${entry.date}T00:00:00`);
-                const dateStr = entryDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+                const dateStr = entryDateObj.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
                 const startTime12 = formatTimeAMPM(entry.startTime);
                 const endTime12 = formatTimeAMPM(entry.endTime);
                 const descStr = entry.description || '';
