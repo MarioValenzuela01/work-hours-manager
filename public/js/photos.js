@@ -1,4 +1,5 @@
-console.log("photos.js version 5 loaded");
+console.log("photos.js version 6 loaded");
+
 const uploadMessage = document.getElementById("uploadMessage");
 const gallery = document.getElementById("gallery");
 const refreshButton = document.getElementById("refreshButton");
@@ -12,6 +13,7 @@ const closeModalButton = document.getElementById("closeModalButton");
 const deleteModalButton = document.getElementById("deleteModalButton");
 
 let selectedPhotoId = null;
+let selectedImageUrl = null;
 
 function getToken() {
   return localStorage.getItem("token");
@@ -44,6 +46,28 @@ function getAuthHeaders() {
   };
 }
 
+function formatPhotoDate(dateValue) {
+  if (!dateValue) {
+    return "Date unavailable";
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Invalid date";
+  }
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Moncton",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 async function protectPhotosPage() {
   const token = getToken();
 
@@ -63,6 +87,10 @@ async function protectPhotosPage() {
       localStorage.removeItem("token");
       redirectToLogin();
       return false;
+    }
+
+    if (!response.ok) {
+      throw new Error("Could not verify authentication.");
     }
 
     return true;
@@ -105,6 +133,7 @@ async function getProtectedImageUrl(photoId) {
   }
 
   const blob = await response.blob();
+
   return URL.createObjectURL(blob);
 }
 
@@ -156,7 +185,9 @@ async function uploadFiles(fileList) {
 
     await loadMyPhotos();
 
-    setMessage(`${result.count} image(s) uploaded successfully.`);
+    setMessage(
+      `${result.count || files.length} image(s) uploaded successfully.`
+    );
   } catch (error) {
     console.error("Upload error:", error);
     setMessage(error.message);
@@ -191,6 +222,8 @@ async function loadMyPhotos() {
 
     const photos = data.photos || [];
 
+    console.log("Photos received from server:", photos);
+
     if (photos.length === 0) {
       gallery.innerHTML = "<p>No images uploaded yet.</p>";
       return;
@@ -198,33 +231,55 @@ async function loadMyPhotos() {
 
     gallery.innerHTML = photos
       .map((photo) => {
+        const photoDate = formatPhotoDate(
+          photo.capturedAt || photo.createdAt
+        );
+
         return `
-          <div class="thumb-wrapper" id="thumb-wrapper-${photo._id}">
-            <div class="thumb-loading">Loading...</div>
+          <div
+            class="thumb-wrapper"
+            id="thumb-wrapper-${photo._id}"
+          >
+            <div class="thumb-loading">
+              Loading...
+            </div>
+
             <img
               id="photo-img-${photo._id}"
               class="photo-thumb"
-              alt="${escapeHtml(photo.originalName)}"
+              alt="${escapeHtml(photo.originalName || "Maintenance photo")}"
               data-photo-id="${photo._id}"
               style="display: none;"
             />
+
+            <div class="photo-date">
+              ${escapeHtml(photoDate)}
+            </div>
           </div>
         `;
       })
       .join("");
 
-    for (const photo of photos) {
-      await loadSingleThumbnail(photo);
-    }
+    await Promise.all(
+      photos.map((photo) => loadSingleThumbnail(photo))
+    );
   } catch (error) {
-    console.error(error);
-    gallery.innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+    console.error("Load photos error:", error);
+
+    gallery.innerHTML = `
+      <p>${escapeHtml(error.message)}</p>
+    `;
   }
 }
 
 async function loadSingleThumbnail(photo) {
-  const imgElement = document.getElementById(`photo-img-${photo._id}`);
-  const wrapper = document.getElementById(`thumb-wrapper-${photo._id}`);
+  const imgElement = document.getElementById(
+    `photo-img-${photo._id}`
+  );
+
+  const wrapper = document.getElementById(
+    `thumb-wrapper-${photo._id}`
+  );
 
   if (!imgElement || !wrapper) {
     return;
@@ -248,16 +303,20 @@ async function loadSingleThumbnail(photo) {
   } catch (error) {
     console.error("Thumbnail load error:", error);
 
-    wrapper.innerHTML = `
-      <div class="thumb-error">
-        Image could not load
-      </div>
-    `;
+    const loadingElement = wrapper.querySelector(".thumb-loading");
+
+    if (loadingElement) {
+      loadingElement.classList.remove("thumb-loading");
+      loadingElement.classList.add("thumb-error");
+      loadingElement.textContent = "Image could not load";
+    }
   }
 }
 
 function openImageModal(imageUrl, photoId) {
   selectedPhotoId = photoId;
+  selectedImageUrl = imageUrl;
+
   modalImage.src = imageUrl;
   imageModal.classList.add("open");
 }
@@ -265,7 +324,9 @@ function openImageModal(imageUrl, photoId) {
 function closeImageModal() {
   imageModal.classList.remove("open");
   modalImage.src = "";
+
   selectedPhotoId = null;
+  selectedImageUrl = null;
 }
 
 async function deleteSelectedPhoto(event) {
@@ -282,7 +343,9 @@ async function deleteSelectedPhoto(event) {
     return;
   }
 
-  const confirmed = confirm("Are you sure you want to delete this photo?");
+  const confirmed = confirm(
+    "Are you sure you want to delete this photo?"
+  );
 
   if (!confirmed) {
     return;
@@ -291,12 +354,15 @@ async function deleteSelectedPhoto(event) {
   setMessage("Deleting photo...");
 
   try {
-    const response = await fetch(`/api/photos/${selectedPhotoId}`, {
-      method: "DELETE",
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
+    const response = await fetch(
+      `/api/photos/${selectedPhotoId}`,
+      {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeaders(),
+        },
+      }
+    );
 
     if (response.status === 401 || response.status === 403) {
       localStorage.removeItem("token");
@@ -310,7 +376,9 @@ async function deleteSelectedPhoto(event) {
     console.log("Delete response:", result);
 
     if (!response.ok || !result.ok) {
-      throw new Error(result.message || "Could not delete photo.");
+      throw new Error(
+        result.message || "Could not delete photo."
+      );
     }
 
     closeImageModal();
