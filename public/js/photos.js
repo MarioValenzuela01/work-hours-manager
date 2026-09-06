@@ -115,8 +115,13 @@ function setMessage(message) {
   uploadMessage.textContent = message;
 }
 
-async function getProtectedImageUrl(photoId) {
-  const response = await fetch(`/api/photos/${photoId}/file`, {
+async function getProtectedImageUrl(photoId, type = "file") {
+  const endpoint =
+    type === "thumbnail"
+      ? `/api/photos/${photoId}/thumbnail`
+      : `/api/photos/${photoId}/file`;
+
+  const response = await fetch(endpoint, {
     headers: {
       ...getAuthHeaders(),
     },
@@ -286,7 +291,10 @@ async function loadSingleThumbnail(photo) {
   }
 
   try {
-    const imageUrl = await getProtectedImageUrl(photo._id);
+    const imageUrl = await getProtectedImageUrl(
+      photo._id,
+      "thumbnail"
+    );
 
     imgElement.src = imageUrl;
     imgElement.style.display = "block";
@@ -297,9 +305,19 @@ async function loadSingleThumbnail(photo) {
       loadingElement.remove();
     }
 
-    imgElement.addEventListener("click", () => {
-      openImageModal(imageUrl, photo._id);
-    });
+    imgElement.addEventListener("click", async () => {
+  try {
+    const fullImageUrl = await getProtectedImageUrl(
+      photo._id,
+      "file"
+    );
+
+    openImageModal(fullImageUrl, photo._id);
+  } catch (error) {
+    console.error("Full image load error:", error);
+    setMessage("Could not load full image.");
+  }
+});
   } catch (error) {
     console.error("Thumbnail load error:", error);
 

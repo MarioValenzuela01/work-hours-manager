@@ -21,6 +21,60 @@ function buildJpegFileName(originalName) {
   return `${baseName}.jpg`;
 }
 
+/*
+ * Creates a small thumbnail beside the photo storage.
+ *
+ * Example:
+ *
+ * uploads/photos/users/USER/2026/08/photo.jpg
+ *
+ * becomes:
+ *
+ * uploads/photos/users/USER/2026/08/thumbnails/photo.jpg
+ */
+async function createThumbnail(imagePath) {
+  const imageFolder = path.dirname(imagePath);
+
+  const thumbnailFolder = path.join(
+    imageFolder,
+    'thumbnails'
+  );
+
+  await fs.mkdir(thumbnailFolder, {
+    recursive: true,
+  });
+
+  const thumbnailPath = path.join(
+    thumbnailFolder,
+    path.basename(imagePath)
+  );
+
+  // If thumbnail already exists, don't recreate it
+  try {
+    await fs.access(thumbnailPath);
+    return thumbnailPath;
+  } catch (error) {
+    // Thumbnail doesn't exist yet
+  }
+
+  await sharp(imagePath, {
+    failOn: 'none',
+  })
+    .resize({
+      width: 360,
+      height: 360,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({
+      quality: 72,
+      progressive: true,
+    })
+    .toFile(thumbnailPath);
+
+  return thumbnailPath;
+}
+
 async function convertToJpeg(file) {
   const uploadFolder = path.dirname(file.path);
   const jpegFileName = buildJpegFileName(file.filename);
@@ -34,7 +88,7 @@ async function convertToJpeg(file) {
     inputBuffer = await heicConvert({
       buffer: heicBuffer,
       format: 'JPEG',
-      quality: 0.92,
+      quality: 0.88,
     });
   } else {
     inputBuffer = await fs.readFile(file.path);
@@ -45,32 +99,41 @@ async function convertToJpeg(file) {
   })
     .rotate()
     .resize({
-      width: 2200,
-      height: 2200,
+      width: 1920,
+      height: 1920,
       fit: 'inside',
       withoutEnlargement: true,
     })
     .jpeg({
-      quality: 84,
-      mozjpeg: true,
+      quality: 80,
       progressive: true,
     })
     .toFile(finalPath);
 
   const finalStats = await fs.stat(finalPath);
 
+  /*
+   * Generate thumbnail immediately for new photos.
+   */
+  await createThumbnail(finalPath);
+
   try {
     if (file.path !== finalPath) {
       await fs.unlink(file.path);
     }
   } catch (error) {
-    console.warn('Could not delete original upload:', error.message);
+    console.warn(
+      'Could not delete original upload:',
+      error.message
+    );
   }
 
   return {
     storedName: jpegFileName,
     physicalPath: finalPath,
-    relativePath: path.relative(process.cwd(), finalPath).replace(/\\/g, '/'),
+    relativePath: path
+      .relative(process.cwd(), finalPath)
+      .replace(/\\/g, '/'),
     mimeType: 'image/jpeg',
     size: finalStats.size,
   };
@@ -78,4 +141,5 @@ async function convertToJpeg(file) {
 
 module.exports = {
   convertToJpeg,
+  createThumbnail,
 };
