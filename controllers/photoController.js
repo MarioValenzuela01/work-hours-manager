@@ -103,21 +103,51 @@ async function uploadPhotos(req, res) {
 
 async function getMyPhotos(req, res) {
   try {
-    const photos = await Photo.find({
+    const page = Math.max(
+      parseInt(req.query.page, 10) || 1,
+      1
+    );
+
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 24, 1),
+      50
+    );
+
+    const skip = (page - 1) * limit;
+
+    const filter = {
       uploadedBy: req.userId,
       deletedAt: null,
-    }).sort({ createdAt: -1 });
+    };
+
+    const [photos, total] = await Promise.all([
+      Photo.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Photo.countDocuments(filter),
+    ]);
+
+    const hasMore = skip + photos.length < total;
 
     return res.json({
       ok: true,
       photos,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore,
+      },
     });
   } catch (error) {
-    console.error('Get my photos error:', error);
+    console.error("Get my photos error:", error);
 
     return res.status(500).json({
       ok: false,
-      message: 'Error loading photos.',
+      message: "Error loading photos.",
     });
   }
 }

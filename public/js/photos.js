@@ -12,6 +12,14 @@ const modalImage = document.getElementById("modalImage");
 const closeModalButton = document.getElementById("closeModalButton");
 const deleteModalButton = document.getElementById("deleteModalButton");
 
+const PHOTO_PAGE_SIZE = 24;
+
+let currentPhotoPage = 1;
+let hasMorePhotos = true;
+let isLoadingPhotos = false;
+let photoScrollObserver = null;
+let loadMoreSentinel = null;
+
 let selectedPhotoId = null;
 let selectedImageUrl = null;
 
@@ -199,19 +207,36 @@ async function uploadFiles(fileList) {
   }
 }
 
-async function loadMyPhotos() {
+async function loadMyPhotos(reset = true) {
   if (!requireLogin()) {
     return;
   }
 
-  gallery.innerHTML = "<p>Updating gallery...</p>";
+  if (isLoadingPhotos) {
+    return;
+  }
+
+  if (!reset && !hasMorePhotos) {
+    return;
+  }
+
+  if (reset) {
+    currentPhotoPage = 1;
+    hasMorePhotos = true;
+    gallery.innerHTML = "<p>Updating gallery...</p>";
+  }
+
+  isLoadingPhotos = true;
 
   try {
-    const response = await fetch("/api/photos/my", {
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
+    const response = await fetch(
+      `/api/photos/my?page=${currentPhotoPage}&limit=${PHOTO_PAGE_SIZE}`,
+      {
+        headers: {
+          ...getAuthHeaders(),
+        },
+      }
+    );
 
     if (response.status === 401 || response.status === 403) {
       localStorage.removeItem("token");
@@ -222,19 +247,24 @@ async function loadMyPhotos() {
     const data = await response.json();
 
     if (!response.ok || !data.ok) {
-      throw new Error(data.message || "Could not load photos.");
+      throw new Error(
+        data.message || "Could not load photos."
+      );
     }
 
     const photos = data.photos || [];
 
-    console.log("Photos received from server:", photos);
+    if (reset) {
+      gallery.innerHTML = "";
+    }
 
-    if (photos.length === 0) {
+    if (photos.length === 0 && currentPhotoPage === 1) {
       gallery.innerHTML = "<p>No images uploaded yet.</p>";
+      hasMorePhotos = false;
       return;
     }
 
-    gallery.innerHTML = photos
+    const html = photos
       .map((photo) => {
         const photoDate = formatPhotoDate(
           photo.capturedAt || photo.createdAt
@@ -252,7 +282,9 @@ async function loadMyPhotos() {
             <img
               id="photo-img-${photo._id}"
               class="photo-thumb"
-              alt="${escapeHtml(photo.originalName || "Maintenance photo")}"
+              alt="${escapeHtml(
+                photo.originalName || "Maintenance photo"
+              )}"
               data-photo-id="${photo._id}"
               style="display: none;"
             />
@@ -265,16 +297,82 @@ async function loadMyPhotos() {
       })
       .join("");
 
+    gallery.insertAdjacentHTML("beforeend", html);
+
     await Promise.all(
       photos.map((photo) => loadSingleThumbnail(photo))
+    );
+
+    hasMorePhotos = Boolean(
+      data.pagination?.hasMore
+    );
+
+    if (hasMorePhotos) {
+      currentPhotoPage += 1;
+    }
+
+    console.log(
+      `Loaded ${photos.length} photos. Page: ${
+        currentPhotoPage - 1
+      }. More: ${hasMorePhotos}`
     );
   } catch (error) {
     console.error("Load photos error:", error);
 
-    gallery.innerHTML = `
-      <p>${escapeHtml(error.message)}</p>
-    `;
+    if (reset) {
+      gallery.innerHTML = `
+        <p>${escapeHtml(error.message)}</p>
+      `;
+    }
+
+    setMessage(error.message);
+  } finally {
+    isLoadingPhotos = false;
   }
+}
+
+function setupPhotoInfiniteScroll() {
+  if (photoScrollObserver) {
+    photoScrollObserver.disconnect();
+  }
+
+  if (loadMoreSentinel) {
+    loadMoreSentinel.remove();
+  }
+
+  loadMoreSentinel = document.createElement("div");
+  loadMoreSentinel.id = "photo-load-sentinel";
+  loadMoreSentinel.style.height = "1px";
+  loadMoreSentinel.style.width = "100%";
+
+  gallery.insertAdjacentElement(
+    "afterend",
+    loadMoreSentinel
+  );
+
+  photoScrollObserver = new IntersectionObserver(
+    async (entries) => {
+      const entry = entries[0];
+
+      if (
+        entry.isIntersecting &&
+        hasMorePhotos &&
+        !isLoadingPhotos
+      ) {
+        await loadMyPhotos(false);
+      }
+    },
+    {
+      root: null,
+
+      // Empieza a cargar antes de llegar al final.
+      rootMargin: "600px 0px",
+
+      threshold: 0,
+    }
+  );
+
+  photoScrollObserver.observe(loadMoreSentinel);
 }
 
 async function loadSingleThumbnail(photo) {
@@ -444,9 +542,14 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-protectPhotosPage().then((isAllowed) => {
+protectPhotosPage().then(async (isAllowed) => {
   if (isAllowed) {
     setMessage("Updating gallery...");
-    loadMyPhotos();
+
+    setupPhotoInfiniteScroll();
+
+    await loadMyPhotos(true);
+
+    setMessage("");
   }
 });
