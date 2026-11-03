@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-
+const sharp = require('sharp');
 
 const Photo = require('../models/photo.model');
 const User = require('../models/user.model');
@@ -103,21 +103,51 @@ async function uploadPhotos(req, res) {
 
 async function getMyPhotos(req, res) {
   try {
-    const photos = await Photo.find({
+    const page = Math.max(
+      parseInt(req.query.page, 10) || 1,
+      1
+    );
+
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit, 10) || 24, 1),
+      50
+    );
+
+    const skip = (page - 1) * limit;
+
+    const filter = {
       uploadedBy: req.userId,
       deletedAt: null,
-    }).sort({ createdAt: -1 });
+    };
+
+    const [photos, total] = await Promise.all([
+      Photo.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Photo.countDocuments(filter),
+    ]);
+
+    const hasMore = skip + photos.length < total;
 
     return res.json({
       ok: true,
       photos,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore,
+      },
     });
   } catch (error) {
-    console.error('Get my photos error:', error);
+    console.error("Get my photos error:", error);
 
     return res.status(500).json({
       ok: false,
-      message: 'Error loading photos.',
+      message: "Error loading photos.",
     });
   }
 }
@@ -138,10 +168,21 @@ async function getAllPhotos(req, res) {
       deletedAt: null,
     };
 
-    if (user) filter.uploadedByName = new RegExp(user, 'i');
-    if (category) filter.category = new RegExp(category, 'i');
-    if (asset) filter.asset = new RegExp(asset, 'i');
-    if (workOrder) filter.workOrder = new RegExp(workOrder, 'i');
+    if (user) {
+      filter.uploadedByName = new RegExp(user, 'i');
+    }
+
+    if (category) {
+      filter.category = new RegExp(category, 'i');
+    }
+
+    if (asset) {
+      filter.asset = new RegExp(asset, 'i');
+    }
+
+    if (workOrder) {
+      filter.workOrder = new RegExp(workOrder, 'i');
+    }
 
     if (search) {
       filter.$or = [
@@ -158,11 +199,18 @@ async function getAllPhotos(req, res) {
     if (from || to) {
       filter.createdAt = {};
 
-      if (from) filter.createdAt.$gte = new Date(from);
-      if (to) filter.createdAt.$lte = new Date(to);
+      if (from) {
+        filter.createdAt.$gte = new Date(from);
+      }
+
+      if (to) {
+        filter.createdAt.$lte = new Date(to);
+      }
     }
 
-    const photos = await Photo.find(filter).sort({ createdAt: -1 });
+    const photos = await Photo.find(filter).sort({
+      createdAt: -1,
+    });
 
     return res.json({
       ok: true,
@@ -207,13 +255,102 @@ async function getPhotoFile(req, res) {
     }
 
     res.setHeader('Content-Type', photo.mimeType);
-    return res.sendFile(path.resolve(photo.physicalPath));
+
+    res.setHeader(
+      'Cache-Control',
+      'private, max-age=604800'
+    );
+
+    return res.sendFile(
+      path.resolve(photo.physicalPath)
+    );
   } catch (error) {
     console.error('Get photo file error:', error);
 
     return res.status(500).json({
       ok: false,
       message: 'Error loading image file.',
+    });
+  }
+}
+
+async function getPhotoThumbnail(req, res) {
+  try {
+    const photo = await Photo.findOne({
+      _id: req.params.id,
+      deletedAt: null,
+    });
+
+    if (!photo) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Photo not found.',
+      });
+    }
+
+    if (!canViewPhoto(req, photo)) {
+      return res.status(403).json({
+        ok: false,
+        message: 'You do not have permission to view this photo.',
+      });
+    }
+
+    if (!fs.existsSync(photo.physicalPath)) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Image file not found on server.',
+      });
+    }
+
+    const thumbnailFolder = path.join(
+      path.dirname(photo.physicalPath),
+      'thumbnails'
+    );
+
+    const thumbnailPath = path.join(
+      thumbnailFolder,
+      path.basename(photo.physicalPath)
+    );
+
+    /*
+     * Create the thumbnail only if it does not exist.
+     * Existing photos get one the first time
+     * the gallery requests it.
+     */
+    if (!fs.existsSync(thumbnailPath)) {
+      fs.mkdirSync(thumbnailFolder, {
+        recursive: true,
+      });
+
+      await sharp(photo.physicalPath)
+        .resize({
+          width: 360,
+          height: 360,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({
+          quality: 75,
+        })
+        .toFile(thumbnailPath);
+    }
+
+    res.setHeader('Content-Type', 'image/jpeg');
+
+    res.setHeader(
+      'Cache-Control',
+      'private, max-age=604800'
+    );
+
+    return res.sendFile(
+      path.resolve(thumbnailPath)
+    );
+  } catch (error) {
+    console.error('Get photo thumbnail error:', error);
+
+    return res.status(500).json({
+      ok: false,
+      message: 'Error loading photo thumbnail.',
     });
   }
 }
@@ -265,5 +402,6 @@ module.exports = {
   getMyPhotos,
   getAllPhotos,
   getPhotoFile,
+  getPhotoThumbnail,
   deletePhoto,
 };

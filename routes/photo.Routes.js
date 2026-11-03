@@ -17,6 +17,12 @@ router.get('/my', requireAuth, photoController.getMyPhotos);
 
 router.get('/all', requireAuth, requireAdmin, photoController.getAllPhotos);
 
+router.get(
+  '/:id/thumbnail',
+  requireAuth,
+  photoController.getPhotoThumbnail
+);
+
 router.get('/:id/file', requireAuth, photoController.getPhotoFile);
 
 router.delete('/:id', requireAuth, photoController.deletePhoto);
