@@ -348,131 +348,131 @@
             margin-top: 14px;
         }
 
-    /* =========================
+        /* =========================
    MOBILE
    ========================= */
 
-/* =========================
+        /* =========================
    MOBILE
    ========================= */
 
-@media (max-width: 760px) {
-    body {
-        padding: 10px;
-    }
+        @media (max-width: 760px) {
+            body {
+                padding: 10px;
+            }
 
-    .top-bar,
-    .actions {
-        flex-direction: column;
-        align-items: stretch;
-    }
+            .top-bar,
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
 
-    .grid-2,
-    .grid-3,
-    .check-grid {
-        grid-template-columns: 1fr;
-    }
+            .grid-2,
+            .grid-3,
+            .check-grid {
+                grid-template-columns: 1fr;
+            }
 
-    .card {
-        padding: 14px;
-        overflow-x: hidden;
-    }
+            .card {
+                padding: 14px;
+                overflow-x: hidden;
+            }
 
-    .fluid-table {
-        width: 100%;
-        min-width: 0;
-        table-layout: fixed;
-        font-size: 12px;
-    }
+            .fluid-table {
+                width: 100%;
+                min-width: 0;
+                table-layout: fixed;
+                font-size: 12px;
+            }
 
-    .fluid-table th,
-    .fluid-table td {
-        padding: 5px;
-        white-space: normal;
-        word-break: normal;
-        vertical-align: middle;
-    }
+            .fluid-table th,
+            .fluid-table td {
+                padding: 5px;
+                white-space: normal;
+                word-break: normal;
+                vertical-align: middle;
+            }
 
-    /* ✅ column */
-    .fluid-table th:nth-child(1),
-    .fluid-table td:nth-child(1) {
-        width: 34px;
-        text-align: center;
-    }
+            /* ✅ column */
+            .fluid-table th:nth-child(1),
+            .fluid-table td:nth-child(1) {
+                width: 34px;
+                text-align: center;
+            }
 
-    /* Fluid name */
-    .fluid-table th:nth-child(2),
-    .fluid-table td:nth-child(2) {
-        width: 31%;
-    }
+            /* Fluid name */
+            .fluid-table th:nth-child(2),
+            .fluid-table td:nth-child(2) {
+                width: 31%;
+            }
 
-    /* Level / Amount */
-    .fluid-table th:nth-child(3),
-    .fluid-table td:nth-child(3) {
-        width: 24%;
-        text-align: center;
-    }
+            /* Level / Amount */
+            .fluid-table th:nth-child(3),
+            .fluid-table td:nth-child(3) {
+                width: 24%;
+                text-align: center;
+            }
 
-    /* Added */
-    .fluid-table th:nth-child(4),
-    .fluid-table td:nth-child(4) {
-        width: 17%;
-        text-align: center;
-    }
+            /* Added */
+            .fluid-table th:nth-child(4),
+            .fluid-table td:nth-child(4) {
+                width: 17%;
+                text-align: center;
+            }
 
-    /* Comments */
-    .fluid-table th:nth-child(5),
-    .fluid-table td:nth-child(5) {
-        width: 20%;
-        text-align: center;
-    }
+            /* Comments */
+            .fluid-table th:nth-child(5),
+            .fluid-table td:nth-child(5) {
+                width: 20%;
+                text-align: center;
+            }
 
-    .fluid-table input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        padding: 0;
-    }
+            .fluid-table input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+                padding: 0;
+            }
 
-    .fluid-table td:nth-child(3) input,
-    .fluid-table td:nth-child(4) input {
-        width: 44px;
-        max-width: 44px;
-        min-width: 44px;
-        height: 30px;
-        font-size: 12px;
-        padding: 2px 4px;
-        text-align: center;
-        border-radius: 7px;
-    }
+            .fluid-table td:nth-child(3) input,
+            .fluid-table td:nth-child(4) input {
+                width: 44px;
+                max-width: 44px;
+                min-width: 44px;
+                height: 30px;
+                font-size: 12px;
+                padding: 2px 4px;
+                text-align: center;
+                border-radius: 7px;
+            }
 
-    .comment-btn {
-        width: 52px;
-        min-width: 52px;
-        max-width: 52px;
-        height: 30px;
-        font-size: 0;
-        padding: 4px;
-        border-radius: 7px;
-    }
+            .comment-btn {
+                width: 52px;
+                min-width: 52px;
+                max-width: 52px;
+                height: 30px;
+                font-size: 0;
+                padding: 4px;
+                border-radius: 7px;
+            }
 
-    .comment-btn::after {
-        content: "Note";
-        font-size: 11px;
-    }
+            .comment-btn::after {
+                content: "Note";
+                font-size: 11px;
+            }
 
-    .comment-btn.has-note::after {
-        content: "✓ Note";
-        font-size: 10px;
-    }
+            .comment-btn.has-note::after {
+                content: "✓ Note";
+                font-size: 10px;
+            }
 
-    .modal-content {
-        max-width: 100%;
-    }
+            .modal-content {
+                max-width: 100%;
+            }
 
-    .modal-actions {
-        flex-direction: column;
-    }
-}
+            .modal-actions {
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 
@@ -830,27 +830,131 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        let nfcInspectionReady = false;
+        // NFC mode uses MongoDB as the source for operator and meter readings.
+        // PDF generation and inspection completion will be connected later.
+        document.addEventListener('DOMContentLoaded', async () => {
             const token = localStorage.getItem('token');
+            const qp = new URLSearchParams(window.location.search);
+            const nfcCode = qp.get('equipment');
 
             if (!token) {
-                window.location.href = '/login.html';
+                // The login page supports returning to an equipment page.
+                const destination = nfcCode && /^[a-zA-Z0-9_-]+$/.test(nfcCode)
+                    ? `/login.html?next=${encodeURIComponent(`/equipment/${nfcCode}`)}`
+                    : '/login.html';
+                window.location.replace(destination);
                 return;
             }
 
-            const qp = new URLSearchParams(window.location.search);
+            if (nfcCode) {
+                // Avoid enabling PDF/clear before the inspection is integrated.
+                const pdfButton = document.querySelector('button[onclick="generatePDF()"]');
+                const clearButton = document.querySelector('button[onclick="clearForm()"]');
+                if (pdfButton) {
+                    pdfButton.disabled = true;
+                    pdfButton.textContent = 'Save Inspection & Generate PDF';
+                    pdfButton.title = 'Save inspection and generate official PDF';
+                    pdfButton.style.opacity = '0.6';
+                    pdfButton.style.cursor = 'not-allowed';
+                }
+                if (clearButton) clearButton.hidden = true;
 
-            if (qp.has('date')) {
-                document.getElementById('date').value = qp.get('date');
+                const setInfo = (id, value) => {
+                    const input = document.getElementById(id);
+                    if (input) {
+                        input.value = value == null ? '' : String(value);
+                        // Date inputs are reliably protected by disabled.
+                        if (input.type === 'date') input.disabled = true;
+                        else input.readOnly = true;
+                    }
+                };
+
+                try {
+                    if (!/^[a-zA-Z0-9_-]+$/.test(nfcCode)) {
+                        throw new Error('Invalid equipment identifier');
+                    }
+
+                    const response = await fetch(
+                        `/api/equipment/${encodeURIComponent(nfcCode)}/current`,
+                        { headers: { Authorization: `Bearer ${token}` } }
+                    );
+
+                    if (response.status === 401) {
+                        localStorage.removeItem('token');
+                        localStorage.removeItem('username');
+                        localStorage.removeItem('role');
+                        window.location.replace(
+                            `/login.html?next=${encodeURIComponent(`/equipment/${nfcCode}`)}`
+                        );
+                        return;
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`Unable to load equipment (HTTP ${response.status})`);
+                    }
+
+                    const { equipment, usage } = await response.json();
+                    if (!equipment || !usage || usage.status !== 'PENDING_INSPECTION') {
+                        throw new Error('No pending inspection found for this tractor');
+                    }
+
+                    // Only the original operator should use this NFC form.
+                    // The backend must still enforce authorization on saving.
+                    let signedInUserId = null;
+                    try {
+                        const raw = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+                        const encoded = raw.padEnd(Math.ceil(raw.length / 4) * 4, '=');
+                        signedInUserId = JSON.parse(atob(encoded)).userId;
+                    } catch (_) { /* invalid payload */ }
+                    if (!signedInUserId || String(signedInUserId) !== String(usage.operatorId)) {
+                        throw new Error('Only the operator who used this tractor can complete its inspection');
+                    }
+
+                    setInfo('operator', usage.operatorName);
+                    setInfo('size', equipment.name || equipment.model);
+                    setInfo('serialNumber', equipment.serialNumber);
+                    setInfo('hourStart', usage.hoursStart);
+                    setInfo('hourEnd', usage.hoursEnd);
+
+                    if (!usage.endTime || Number.isNaN(new Date(usage.endTime).getTime())) {
+                        throw new Error('Missing valid finish date');
+                    }
+                    const parts = new Intl.DateTimeFormat('en-CA', {
+                        timeZone: 'America/Moncton',
+                        year: 'numeric', month: '2-digit', day: '2-digit'
+                    }).formatToParts(new Date(usage.endTime));
+                    const part = name => parts.find(p => p.type === name)?.value;
+                    setInfo('date', `${part('year')}-${part('month')}-${part('day')}`);
+
+                    console.log('NFC inspection details loaded');
+
+                    nfcInspectionReady = true;
+
+                    if (pdfButton) {
+                        pdfButton.disabled = false;
+                        pdfButton.style.opacity = '1';
+                        pdfButton.style.cursor = 'pointer';
+                    }
+                } catch (error) {
+                    console.error('NFC inspection error:', error);
+                    // Make errors visible without creating duplicate alerts on reload.
+                    const note = document.createElement('p');
+                    note.setAttribute('role', 'alert');
+                    note.style.color = 'var(--danger)';
+                    note.textContent = error.message;
+                    document.getElementById('inspection-form').prepend(note);
+                    // Prevent entering data when there is no valid pending session.
+                    document.querySelectorAll('#inspection-form input, #inspection-form textarea, #inspection-form button')
+                        .forEach(el => { el.disabled = true; });
+                }
+                return;
             }
 
-            if (qp.has('hourStart')) {
-                document.getElementById('hourStart').value = qp.get('hourStart');
-            }
-
-            if (qp.has('hourEnd')) {
-                document.getElementById('hourEnd').value = qp.get('hourEnd');
-            }
+            // Standalone inspection: preserve original behavior.
+            if (qp.has('date')) document.getElementById('date').value = qp.get('date');
+            if (qp.has('hourStart')) document.getElementById('hourStart').value = qp.get('hourStart');
+            if (qp.has('hourEnd')) document.getElementById('hourEnd').value = qp.get('hourEnd');
 
             if (!document.getElementById('date').value) {
                 const today = new Date();
@@ -870,7 +974,186 @@
             return el.value || "";
         }
 
+
+        async function saveNfcInspection() {
+
+            if (!nfcInspectionReady) {
+                alert("Inspection is not ready.");
+                return;
+            }
+
+            const params = new URLSearchParams(window.location.search);
+            const nfcCode = params.get("equipment");
+
+            if (!nfcCode || !/^[a-zA-Z0-9_-]+$/.test(nfcCode)) {
+                alert("Invalid equipment identifier.");
+                return;
+            }
+
+            const token = localStorage.getItem("token");
+
+            if (!token) {
+                alert("Please log in again.");
+                return;
+            }
+
+            const button = document.querySelector(
+                'button[onclick="generatePDF()"]'
+            );
+
+            const fields = {};
+
+            for (let i = 1; i <= 53; i++) {
+                fields[`field${i}`] = getValue(`field${i}`);
+            }
+
+            const comments = getValue("comments");
+
+            if (comments.length > 220) {
+                alert("Comments cannot exceed 220 characters.");
+                return;
+            }
+
+            // Confirm before finalizing the inspection
+            const confirmed = confirm(
+                "Complete this inspection?\n\n" +
+                "The inspection and PDF will be saved, " +
+                "and the tractor will become available."
+            );
+
+            if (!confirmed) {
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Saving inspection...";
+
+            let savedSuccessfully = false;
+
+            try {
+
+                // ==================================
+                // SAVE INSPECTION AND PDF
+                // ==================================
+
+                const response = await fetch(
+                    `/api/equipment/${encodeURIComponent(nfcCode)}/inspection`,
+                    {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            fields,
+                            comments
+                        })
+                    }
+                );
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.message || "Failed to save inspection"
+                    );
+                }
+
+                savedSuccessfully = true;
+                nfcInspectionReady = false;
+
+                button.textContent = "Inspection Saved";
+                button.disabled = true;
+
+                // ==================================
+                // DOWNLOAD SAVED PDF
+                // ==================================
+
+                try {
+
+                    const pdfResponse = await fetch(result.pdfUrl, {
+                        headers: {
+                            Authorization: `Bearer ${token}`
+                        }
+                    });
+
+                    if (!pdfResponse.ok) {
+                        throw new Error("PDF download failed");
+                    }
+
+                    const blob = await pdfResponse.blob();
+
+                    const url = URL.createObjectURL(blob);
+
+                    const link = document.createElement("a");
+
+                    link.href = url;
+                    link.download =
+                        `inspection-${nfcCode}-${result.usageId}.pdf`;
+
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+
+                    setTimeout(() => {
+                        URL.revokeObjectURL(url);
+                    }, 1000);
+
+                    alert(
+                        "Inspection saved successfully!\n\n" +
+                        "The equipment is now available.\n" +
+                        "Your PDF has been generated."
+                    );
+
+                } catch (downloadError) {
+
+                    console.error(
+                        "PDF download error:",
+                        downloadError
+                    );
+
+                    alert(
+                        "Inspection saved successfully.\n\n" +
+                        "The equipment is now available, but " +
+                        "the PDF could not be downloaded.\n" +
+                        "The document remains stored on the server."
+                    );
+                }
+
+                // Return to equipment page
+                window.location.href =
+                    `/equipment/${encodeURIComponent(nfcCode)}`;
+
+            } catch (error) {
+
+                console.error(
+                    "Save NFC inspection error:",
+                    error
+                );
+
+                alert(
+                    "Error saving inspection:\n" +
+                    error.message
+                );
+
+            } finally {
+
+                if (!savedSuccessfully) {
+                    button.disabled = false;
+                    button.textContent =
+                        "Save Inspection & Generate PDF";
+                }
+            }
+        }
+
+
         function generatePDF() {
+            const params = new URLSearchParams(window.location.search);
+
+            if (params.has("equipment")) {
+                saveNfcInspection();
+                return;
+            }
             const data = {
                 operator: getValue("operator"),
                 date: getValue("date"),

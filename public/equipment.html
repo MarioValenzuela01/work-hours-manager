@@ -1,0 +1,167 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Equipment Hours | Cornerstone</title>
+
+    <link rel="stylesheet" href="/css/equipment.css">
+    <script src="/js/equipment.js" defer></script>
+</head>
+
+<body>
+
+<main class="container">
+
+    <header class="header">
+        <h1>Cornerstone Equipment</h1>
+        <p>Tractor Hours Manager</p>
+    </header>
+
+    <section class="card">
+
+        <h2 id="equipmentName">Loading equipment...</h2>
+        <p id="equipmentCode"></p>
+
+        <div id="equipmentStatus" class="status">
+            Loading...
+        </div>
+
+        <p id="message" role="status"></p>
+
+        <!-- ==================================
+             START EQUIPMENT USAGE
+             ================================== -->
+
+        <form id="startForm" class="hidden">
+
+            <h3>Start Equipment Usage</h3>
+
+            <label for="operatorName">Operator</label>
+            <input
+                id="operatorName"
+                type="text"
+                readonly
+            >
+
+            <label for="hoursStart">Initial Hour Meter</label>
+            <input
+                id="hoursStart"
+                type="number"
+                min="0"
+                step="0.1"
+                inputmode="decimal"
+                required
+            >
+
+            <p class="info">
+                Start time will be recorded automatically.
+            </p>
+
+            <button type="submit">
+                Start Usage
+            </button>
+
+        </form>
+
+        <!-- ==================================
+             FINISH EQUIPMENT USAGE
+             ================================== -->
+
+        <form id="finishForm" class="hidden">
+
+            <h3>Finish Equipment Usage</h3>
+
+            <label for="currentOperator">Operator</label>
+            <input
+                id="currentOperator"
+                type="text"
+                readonly
+            >
+
+            <label for="startTime">Start Time</label>
+            <input
+                id="startTime"
+                type="text"
+                readonly
+            >
+
+            <label for="initialMeter">Initial Hour Meter</label>
+            <input
+                id="initialMeter"
+                type="text"
+                readonly
+            >
+
+            <label for="hoursEnd">Final Hour Meter</label>
+            <input
+                id="hoursEnd"
+                type="number"
+                min="0"
+                step="0.1"
+                inputmode="decimal"
+                required
+            >
+
+            <button type="submit">
+                Finish Usage
+            </button>
+
+        </form>
+
+        <!-- ==================================
+             PENDING EQUIPMENT INSPECTION
+             ================================== -->
+
+        <section id="inspectionSection" class="hidden">
+
+            <h3>Equipment Inspection</h3>
+
+            <p>
+                Equipment hours have been recorded successfully.
+                Please complete the equipment inspection.
+            </p>
+
+            <p id="inspectionDetails"></p>
+
+            <button
+                type="button"
+                id="openInspectionButton">
+                Open Inspection Form
+            </button>
+
+        </section>
+
+        <!-- ==================================
+             EQUIPMENT IN USE BY ANOTHER OPERATOR
+             ================================== -->
+
+        <section id="busySection" class="hidden">
+
+            <h3>Equipment In Use</h3>
+
+            <p id="busyMessage"></p>
+
+        </section>
+
+        <!-- ==================================
+             REFRESH EQUIPMENT STATUS
+             ================================== -->
+
+        <button
+            id="refreshButton"
+            type="button"
+            class="secondary">
+            Refresh Status
+        </button>
+
+    </section>
+
+</main>
+
+</body>
+</html>

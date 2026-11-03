@@ -1,0 +1,111 @@
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 18px;
+    background: #f3f5f7;
+    font-family: Arial, sans-serif;
+    color: #202b35;
+}
+
+.container {
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.header {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.header h1 {
+    margin-bottom: 6px;
+    color: #24552e;
+}
+
+.header p {
+    color: #687580;
+}
+
+.card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+h2 {
+    margin-top: 0;
+}
+
+h3 {
+    margin-top: 25px;
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    margin-top: 16px;
+    margin-bottom: 7px;
+}
+
+input {
+    width: 100%;
+    padding: 13px;
+    font-size: 16px;
+    border: 1px solid #cbd3db;
+    border-radius: 8px;
+}
+
+input[readonly] {
+    background: #f1f3f5;
+}
+
+button {
+    width: 100%;
+    margin-top: 22px;
+    padding: 15px;
+    background: #28743a;
+    color: white;
+    border: 0;
+    border-radius: 9px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+button.secondary {
+    background: #e8ecf0;
+    color: #25343c;
+}
+
+.status {
+    display: inline-block;
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: #e5e9ed;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.info {
+    font-size: 13px;
+    color: #667580;
+}
+
+#message {
+    color: #a43a2e;
+    font-size: 14px;
+}
+
+.hidden {
+    display: none;
+}

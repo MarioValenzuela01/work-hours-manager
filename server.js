@@ -1,4 +1,15 @@
-require('dotenv').config();
+require('dotenv').config({
+    path: process.env.NODE_ENV === 'development'
+        ? '.env.development'
+        : '.env'
+});
+if (process.env.NODE_ENV === 'development') {
+    if (process.env.MONGO_DB_NAME !== 'workhours_nfc_dev') {
+        throw new Error('Development database is not configured');
+    }
+
+    console.log('Development mode enabled');
+}
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -9,6 +20,7 @@ const adminRoutes = require('./routes/admin.routes');
 const { requireAuth } = require('./middleware/auth.middleware');
 const inspectionRoutes = require('./inspection/inspection.routes');
 const lawnInspectionRoutes = require("./routes/lawn-inspection.routes");
+const equipmentRoutes = require('./routes/equipment.routes');
 const path = require("path");
 
 const app = express();
@@ -16,6 +28,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;       // ✅ define port
 const MONGO_URI = process.env.MONGO_URI;     // ✅ toma del .env
 const photoRoutes = require("./routes/photo.Routes");
+
 
 app.use(cors());
 app.use(express.json());
@@ -27,12 +40,67 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/inspection', inspectionRoutes);
 app.use('/api/lawn-inspection', lawnInspectionRoutes);
+app.use('/api/equipment', equipmentRoutes);
 app.use("/api/photos", photoRoutes);
 
+
 // Connect Mongo
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('✅ Mongo Connected'))
-    .catch(err => console.log(err));
+// mongoose.connect(MONGO_URI)
+//     .then(() => console.log('✅ Mongo Connected'))
+//     .catch(err => console.log(err));
+
+
+const mongoOptions = {};
+
+if (process.env.NODE_ENV === 'development') {
+    if (process.env.MONGO_DB_NAME !== 'workhours_nfc_dev') {
+        throw new Error('Invalid development database name');
+    }
+
+    mongoOptions.dbName = 'workhours_nfc_dev';
+}
+
+
+async function startServer() {
+    try {
+        if (process.env.NODE_ENV === 'development') {
+            if (process.env.MONGO_DB_NAME !== 'workhours_nfc_dev') {
+                throw new Error('Invalid development database');
+            }
+
+            if (!MONGO_URI) {
+                throw new Error('MONGO_URI is missing');
+            }
+        }
+
+        await mongoose.connect(MONGO_URI, mongoOptions);
+
+        const databaseName = mongoose.connection.name;
+
+        if (
+            process.env.NODE_ENV === 'development' &&
+            databaseName !== 'workhours_nfc_dev'
+        ) {
+            await mongoose.disconnect();
+            throw new Error('Unsafe database connection');
+        }
+
+        console.log('MongoDB connected');
+        console.log('Database:', databaseName);
+
+        app.listen(PORT, () => {
+            console.log(`Server running at http://localhost:${PORT}`);
+        });
+
+    } catch (error) {
+        console.error('Startup failed:', error.message);
+        process.exitCode = 1;
+    }
+}
+
+startServer();
+
+
 
 // GET all hours
 app.get('/api/hours', requireAuth, async (req, res) => {
@@ -152,10 +220,13 @@ app.delete('/api/hours/:id', requireAuth, async (req, res) => {
     }
 });
 
+app.get('/equipment/:nfcCode', (req, res) => {
+    res.sendFile(
+        path.join(__dirname, 'public', 'equipment.html')
+    );
+});
+
 app.get("/photos", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "photos.html"));
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-});
