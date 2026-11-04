@@ -4,6 +4,7 @@
 const express = require("express");
 const fs = require("fs/promises");
 const path = require("path");
+const crypto = require("crypto");
 
 const router = express.Router();
 
@@ -440,288 +441,196 @@ router.patch("/:nfcCode/finish", async (req, res) => {
 // ==========================================
 
 router.patch("/:nfcCode/inspection", async (req, res) => {
-
-    let pdfPath = null;
-    let pdfCreated = false;
-
     try {
-
-        const {
-            fields,
-            comments
-        } = req.body || {};
-
-        // ----------------------------------
-        // 1. Validate inspection data
-        // ----------------------------------
+        const { fields, comments } = req.body || {};
 
         if (!isValidInspection(fields, comments)) {
-
             return res.status(400).json({
-                message:
-                    "Invalid inspection data. " +
-                    "All 53 fields must be included."
+                message: "Invalid inspection data. All 53 fields must be included."
             });
         }
 
-        // ----------------------------------
-        // 2. Identify equipment
-        // ----------------------------------
-
-        const equipment = await findActiveEquipment(
-            req.params.nfcCode
-        );
+        const equipment = await findActiveEquipment(req.params.nfcCode);
 
         if (!equipment) {
-
             return res.status(404).json({
                 message: "Equipment not found"
             });
         }
 
-        // ----------------------------------
-        // 3. Find pending inspection
-        // ----------------------------------
-
         const usage = await EquipmentUsage.findOne({
-
             equipmentId: equipment._id,
-
             status: "PENDING_INSPECTION"
-
         });
 
         if (!usage) {
-
-            return res.status(404).json({
-                message:
-                    "No pending inspection found"
+            return res.status(409).json({
+                message: "No pending inspection. Refresh equipment status."
             });
         }
 
-        // ----------------------------------
-        // 4. Verify operator
-        // ----------------------------------
-
-        if (
-            String(usage.operatorId) !==
-            String(req.userId)
-        ) {
-
+        if (String(usage.operatorId) !== String(req.userId)) {
             return res.status(403).json({
-                message:
-                    "Only the original operator can " +
-                    "complete this inspection"
+                message: "Only the original operator can complete this inspection"
             });
         }
-
-        // ----------------------------------
-        // 5. Prepare checklist
-        // ----------------------------------
 
         const checklist = {};
 
         for (let i = 1; i <= 53; i++) {
-
-            const key = `field${i}`;
-
-            checklist[key] = fields[key];
+            checklist[`field${i}`] = fields[`field${i}`];
         }
 
-        // ----------------------------------
-        // 6. Prepare PDF information
-        // ----------------------------------
+        // Identifies the exact contents of this inspection.
+        const submissionHash = crypto
+            .createHash("sha256")
+            .update(JSON.stringify({ checklist, comments }))
+            .digest("hex");
 
-        const inspectionDate = formatInspectionDate(
-            usage.endTime
-        );
-
-        const pdfData = {
-
-            operator: usage.operatorName,
-
-            date: inspectionDate,
-
-            size: equipment.name,
-
-            serialNumber:
-                equipment.serialNumber || "",
-
-            hourStart: String(
-                usage.hoursStart
-            ),
-
-            hourEnd: String(
-                usage.hoursEnd
-            ),
-
-            comments,
-
-            ...checklist
-        };
-
-        // ----------------------------------
-        // 7. Generate official PDF
-        // ----------------------------------
-
-        const pdfBuffer = await createInspectionPdf(
-            pdfData
-        );
-
-        // ----------------------------------
-        // 8. Create private storage directory
-        // ----------------------------------
-
-        await fs.mkdir(
-            STORAGE_DIR,
-            {
-                recursive: true
-            }
-        );
-
-        // ----------------------------------
-        // 9. Save individual PDF
-        // ----------------------------------
-
-        const fileName = `${usage._id}.pdf`;
-
-        pdfPath = path.join(
-            STORAGE_DIR,
-            fileName
-        );
-
-        // Prevent accidentally overwriting a PDF
-        await fs.writeFile(
-            pdfPath,
-            pdfBuffer,
-            {
-                flag: "wx"
-            }
-        );
-
-        pdfCreated = true;
-
-        // ----------------------------------
-        // 10. Save checklist in MongoDB
-        // ----------------------------------
-
-        const updated = await EquipmentUsage.findOneAndUpdate(
-
+        // Persist the inspection BEFORE generating its PDF.
+        // A retry can use the same hash, but cannot replace
+        // a different inspection already submitted.
+        const saved = await EquipmentUsage.findOneAndUpdate(
             {
                 _id: usage._id,
                 equipmentId: equipment._id,
                 operatorId: req.userId,
-                status: "PENDING_INSPECTION"
+                status: "PENDING_INSPECTION",
+                $or: [
+                    { "inspection.submissionHash": null },
+                    { "inspection.submissionHash": submissionHash }
+                ]
             },
-
             {
                 $set: {
-
-                    "inspection.checklist":
-                        checklist,
-
-                    "inspection.generalComments":
-                        comments,
-
-                    "inspection.completedAt":
-                        new Date(),
-
-                    status: "COMPLETED"
+                    "inspection.checklist": checklist,
+                    "inspection.generalComments": comments,
+                    "inspection.submissionHash": submissionHash
                 }
             },
-
             {
                 new: true,
                 runValidators: true
             }
         );
 
-        // ----------------------------------
-        // 11. Handle concurrent update
-        // ----------------------------------
-
-        if (!updated) {
-
-            // This request did not complete the record.
-            // Remove the file created by this attempt.
-            if (pdfCreated && pdfPath) {
-                try {
-                    await fs.unlink(pdfPath);
-                } catch (cleanupError) {
-                    console.error(
-                        "PDF cleanup failed:",
-                        cleanupError
-                    );
-                }
-            }
-
+        if (!saved) {
             return res.status(409).json({
-                message:
-                    "Inspection was already completed or updated"
+                message: "Inspection changed or was already completed. Refresh status."
             });
         }
 
-        // ----------------------------------
-        // 12. Successful completion
-        // ----------------------------------
+        // Generate PDF from persisted inspection data.
+        const pdfData = {
+            operator: saved.operatorName,
+            date: formatInspectionDate(saved.endTime),
+            size: equipment.name,
+            serialNumber: equipment.serialNumber || "",
+            hourStart: String(saved.hoursStart),
+            hourEnd: String(saved.hoursEnd),
+            comments: saved.inspection.generalComments,
+            ...saved.inspection.checklist
+        };
+
+        const pdfBuffer = await createInspectionPdf(pdfData);
+
+        await fs.mkdir(STORAGE_DIR, { recursive: true });
+
+        const pdfPath = path.join(STORAGE_DIR, `${saved._id}.pdf`);
+
+        // Write a complete temporary PDF first.
+        // Linking it to the final filename is atomic on
+        // the same filesystem and never overwrites an existing PDF.
+        const tempPath = path.join(
+            STORAGE_DIR,
+            `${saved._id}.${crypto.randomUUID()}.tmp`
+        );
+
+        try {
+            await fs.writeFile(tempPath, pdfBuffer, { flag: "wx" });
+
+            try {
+                await fs.link(tempPath, pdfPath);
+            } catch (error) {
+                if (error.code !== "EEXIST") {
+                    throw error;
+                }
+
+                // A previous attempt may already have saved the PDF.
+                // Confirm it is a complete-looking PDF before recovery.
+                const existingPdf = await fs.readFile(pdfPath);
+
+                const headerValid =
+                    existingPdf.subarray(0, 5).toString() === "%PDF-";
+
+                const footerValid =
+                    existingPdf
+                        .subarray(Math.max(0, existingPdf.length - 2048))
+                        .toString("latin1")
+                        .includes("%%EOF");
+
+                if (!headerValid || !footerValid) {
+                    throw new Error(
+                        "Stored PDF requires manual review"
+                    );
+                }
+            }
+        } finally {
+            await fs.rm(tempPath, { force: true }).catch(error => {
+                console.error("Temporary PDF cleanup failed:", error);
+            });
+        }
+
+        // Mark completed only after the PDF is available.
+
+
+        const updated = await EquipmentUsage.findOneAndUpdate(
+            {
+                _id: saved._id,
+                equipmentId: equipment._id,
+                operatorId: req.userId,
+                status: "PENDING_INSPECTION",
+                "inspection.submissionHash": submissionHash
+            },
+            {
+                $set: {
+                    status: "COMPLETED",
+                    "inspection.completedAt": new Date()
+                }
+            },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+
+        if (!updated) {
+            return res.status(409).json({
+                message: "Inspection status changed. Refresh equipment status."
+            });
+        }
 
         const pdfUrl =
-            `/api/equipment/` +
-            `${encodeURIComponent(equipment.nfcCode)}` +
+            `/api/equipment/${encodeURIComponent(equipment.nfcCode)}` +
             `/inspections/${updated._id}/pdf`;
 
         return res.json({
-
-            message:
-                "Inspection and PDF saved successfully",
-
+            message: "Inspection and PDF saved successfully",
             equipmentStatus: "AVAILABLE",
-
             usageStatus: updated.status,
-
             usageId: String(updated._id),
-
-            totalEngineHours:
-                updated.hoursEnd -
-                updated.hoursStart,
-
-            completedAt:
-                updated.inspection.completedAt,
-
+            totalEngineHours: updated.hoursEnd - updated.hoursStart,
+            completedAt: updated.inspection.completedAt,
             pdfUrl
         });
 
     } catch (error) {
-
-        console.error(
-            "Inspection completion error:",
-            error
-        );
-
-        if (error.code === "EEXIST") {
-
-            return res.status(409).json({
-                message:
-                    "An inspection PDF already exists " +
-                    "for this usage. Review the stored " +
-                    "record before retrying."
-            });
-        }
-
-        // Do not delete a PDF automatically when
-        // the MongoDB commit outcome is uncertain.
-        if (pdfCreated && pdfPath) {
-
-            console.error(
-                "PDF may require manual reconciliation:",
-                pdfPath
-            );
-        }
+        console.error("Inspection completion error:", error);
 
         return res.status(500).json({
             message:
                 "Inspection could not be completed. " +
-                "The record may require review before retrying."
+                "Retry with the same inspection data or contact an administrator."
         });
     }
 });

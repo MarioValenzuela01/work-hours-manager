@@ -71,6 +71,10 @@ const equipmentUsageSchema = new mongoose.Schema({
         completedAt: {
             type: Date,
             default: null
+        },
+        submissionHash: {
+            type: String,
+            default: null
         }
     }
 }, {

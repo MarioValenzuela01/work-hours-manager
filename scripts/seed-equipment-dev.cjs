@@ -24,7 +24,7 @@ async function seedEquipment() {
             {
                 $setOnInsert: {
                     code: 'TRACTOR-001',
-                    name: 'John Deere 4052R',
+                    name: 'Long',
                     brand: 'John Deere',
                     model: '4052R',
                     nfcCode: 'tractor-001',
