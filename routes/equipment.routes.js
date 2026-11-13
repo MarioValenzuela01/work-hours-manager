@@ -417,9 +417,9 @@ router.patch("/:nfcCode/finish", async (req, res) => {
 
             usage: updated,
 
-            totalEngineHours:
-                updated.hoursEnd -
-                updated.hoursStart
+            totalEngineHours: Number(
+                (updated.hoursEnd - updated.hoursStart).toFixed(1)
+            ),
         });
 
     } catch (error) {
@@ -619,7 +619,9 @@ router.patch("/:nfcCode/inspection", async (req, res) => {
             equipmentStatus: "AVAILABLE",
             usageStatus: updated.status,
             usageId: String(updated._id),
-            totalEngineHours: updated.hoursEnd - updated.hoursStart,
+            totalEngineHours: Number(
+                (updated.hoursEnd - updated.hoursStart).toFixed(1)
+            ),
             completedAt: updated.inspection.completedAt,
             pdfUrl
         });

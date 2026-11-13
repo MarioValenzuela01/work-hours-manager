@@ -22,6 +22,8 @@ const inspectionRoutes = require('./inspection/inspection.routes');
 const lawnInspectionRoutes = require("./routes/lawn-inspection.routes");
 const equipmentRoutes = require('./routes/equipment.routes');
 const path = require("path");
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./docs/swagger");
 
 const app = express();
 
@@ -33,6 +35,10 @@ const photoRoutes = require("./routes/photo.Routes");
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+// Swagger UI - Development only
+if (process.env.NODE_ENV === "development") {
+    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 

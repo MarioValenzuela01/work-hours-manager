@@ -1,0 +1,202 @@
+tags:
+  - name: Equipment
+    description: NFC equipment operations
+
+paths:
+
+  /api/equipment/{nfcCode}:
+    get:
+      tags:
+        - Equipment
+      summary: Get equipment information
+      description: Find an active equipment record using its NFC code.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: nfcCode
+          required: true
+          description: Unique NFC identifier
+          schema:
+            type: string
+          example: tractor-001
+      responses:
+        "200":
+          description: Equipment information retrieved successfully
+        "401":
+          description: Authentication required
+        "404":
+          description: Equipment not found
+        "500":
+          description: Server error
+
+
+  /api/equipment/{nfcCode}/current:
+    get:
+      tags:
+        - Equipment
+      summary: Get current equipment usage
+      description: Returns the equipment and its active or pending usage record.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: nfcCode
+          required: true
+          description: Unique NFC identifier
+          schema:
+            type: string
+          example: tractor-001
+      responses:
+        "200":
+          description: Current equipment status retrieved successfully
+        "401":
+          description: Authentication required
+        "404":
+          description: Equipment not found
+        "500":
+          description: Server error
+
+
+  /api/equipment/{nfcCode}/start:
+    post:
+      tags:
+        - Equipment
+      summary: Start equipment usage
+      description: Starts a new equipment usage record using the initial hour meter value.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: nfcCode
+          required: true
+          description: Unique NFC identifier
+          schema:
+            type: string
+          example: tractor-001
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hoursStart
+              properties:
+                hoursStart:
+                  type: number
+                  format: double
+                  description: Initial equipment hour meter value
+                  example: 487.3
+
+      responses:
+        "201":
+          description: Equipment usage started successfully
+        "400":
+          description: Invalid initial hour meter
+        "401":
+          description: Authentication required
+        "404":
+          description: Equipment or user not found
+        "409":
+          description: Equipment already has an open usage record
+        "500":
+          description: Server error
+
+
+  /api/equipment/{nfcCode}/finish:
+    patch:
+      tags:
+        - Equipment
+      summary: Finish equipment usage
+      description: Finishes the current usage and calculates total engine hours.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: nfcCode
+          required: true
+          description: Unique NFC identifier
+          schema:
+            type: string
+          example: tractor-001
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - hoursEnd
+              properties:
+                hoursEnd:
+                  type: number
+                  format: double
+                  description: Final equipment hour meter value
+                  example: 489.1
+
+      responses:
+        "200":
+          description: Equipment usage finished successfully
+        "400":
+          description: Invalid final hour meter or final meter lower than initial meter
+        "401":
+          description: Authentication required
+        "403":
+          description: Only the original operator can finish the usage
+        "404":
+          description: Equipment or active usage not found
+        "409":
+          description: Usage was already updated
+        "500":
+          description: Server error
+
+
+  /api/equipment/{nfcCode}/inspection:
+    patch:
+      tags:
+        - Equipment
+      summary: Save equipment inspection
+      description: Saves the inspection associated with the completed equipment usage.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: nfcCode
+          required: true
+          description: Unique NFC identifier
+          schema:
+            type: string
+          example: tractor-001
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fields:
+                  type: object
+                  description: Inspection checklist fields
+                  additionalProperties: true
+                comments:
+                  type: string
+                  description: General inspection comments
+                  example: Equipment inspected after use. No issues found.
+
+      responses:
+        "200":
+          description: Inspection saved successfully
+        "400":
+          description: Invalid inspection data
+        "401":
+          description: Authentication required
+        "403":
+          description: User is not allowed to complete this inspection
+        "404":
+          description: Equipment or pending inspection not found
+        "500":
+          description: Server error
