@@ -236,7 +236,7 @@ async function loadEquipment() {
             setStatus("Available");
 
             operatorName.value =
-                localStorage.getItem("username") || "";
+                result.operatorName || localStorage.getItem("username") || "";
 
             hoursStartInput.value = "";
 
