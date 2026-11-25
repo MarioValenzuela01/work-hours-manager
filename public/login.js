@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const authForm = document.getElementById('auth-form');
     const usernameInput = document.getElementById('username');
     const passwordInput = document.getElementById('password');
+    const fullNameInput = document.getElementById('fullName');
+    const fullNameGroup = document.getElementById('full-name-group');
     const authTitle = document.getElementById('auth-title');
     const authSubmit = document.getElementById('auth-submit');
     const authToggleText = document.getElementById('auth-toggle-text');
@@ -68,6 +70,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     authToggleLink.addEventListener('click', () => {
         isLogin = !isLogin;
+        fullNameGroup.style.display = isLogin ? 'none' : '';
+        fullNameInput.required = !isLogin;
 
         authTitle.textContent =
             isLogin ? 'Login' : 'Registration';
@@ -98,6 +102,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = usernameInput.value.trim();
         const password = passwordInput.value;
 
+        const fullName = fullNameInput.value.trim();
+
+        if (!isLogin && !fullName) {
+            showError('Please enter your full name');
+            return;
+        }
+
         if (!username || !password) {
             showError('Please enter username and password');
             return;
@@ -113,10 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    username,
-                    password
-                })
+                body: JSON.stringify(
+                    isLogin
+                        ? { username, password }
+                        : { username, password, fullName }
+                )
             });
 
             const data = await response.json();
@@ -149,6 +161,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // ==================================
 
                 isLogin = true;
+
+                fullNameGroup.style.display = 'none';
+                fullNameInput.required = false;
+                fullNameInput.value = '';
 
                 authTitle.textContent = 'Login';
 

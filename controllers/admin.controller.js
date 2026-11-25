@@ -99,4 +99,49 @@ const getUserHours = async (req, res) => {
     }
 };
 
-module.exports = { getAllUsers, resetUserPassword, deleteUser, getAllHours, getUserHours };
+const updateUserFullName = async (req, res) => {
+    const { userId } = req.params;
+    const { fullName } = req.body;
+
+    if (typeof fullName !== 'string' || !fullName.trim()) {
+        return res.status(400).json({
+            ok: false,
+            message: 'Full name is required'
+        });
+    }
+
+    try {
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                ok: false,
+                message: 'User not found'
+            });
+        }
+
+        user.fullName = fullName.trim();
+        await user.save();
+
+        return res.status(200).json({
+            ok: true,
+            message: 'Full name updated successfully'
+        });
+
+    } catch (error) {
+        console.error('Error updating full name:', error);
+
+        return res.status(500).json({
+            ok: false,
+            message: 'Server error updating full name'
+        });
+    }
+};
+module.exports = {
+    getAllUsers,
+    resetUserPassword,
+    deleteUser,
+    getAllHours,
+    getUserHours,
+    updateUserFullName
+};

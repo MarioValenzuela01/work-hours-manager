@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <thead>
                 <tr style="text-align: left;">
                     <th>Username</th>
+                    <th>Full Name</th>
                     <th>Role</th>
                     <th>Acciones</th>
                 </tr>
@@ -84,8 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${users.map(u => `
                     <tr>
                         <td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">${escapeHtml(u.username)}</td>
+                        <td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        ${escapeHtml(u.fullName || 'Not set')}
+                        </td>
                         <td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);"><span class="duration-pill" style="background: ${u.role === 'admin' ? 'var(--primary-color)' : 'var(--bg-card)'}">${u.role}</span></td>
                         <td style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <button class="btn-secondary edit-name-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;" data-user-id="${u._id}"><i class="fa-solid fa-pencil"></i> Edit Name </button>
                             <button class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;" onclick="openAdminUserHoursModal('${u._id}', '${escapeHtml(u.username)}')"><i class="fa-solid fa-clock"></i> Ver Horas</button>
                             <button class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 5px;" onclick="openAdminResetModal('${u._id}', '${escapeHtml(u.username)}')">Cambiar Contraseña</button>
                             ${u.username !== localStorage.getItem('username') ? `<button class="btn-primary" style="background: var(--danger-color); border-color: var(--danger-color); padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="adminDeleteUser('${u._id}')"><i class="fa-solid fa-trash"></i></button>` : ''}
@@ -95,6 +100,50 @@ document.addEventListener('DOMContentLoaded', () => {
             </tbody>
         `;
         list.appendChild(table);
+        table.querySelectorAll('.edit-name-btn').forEach(button => {
+            button.addEventListener('click', async () => {
+                const userId = button.dataset.userId;
+                const user = users.find(u => u._id === userId);
+
+                if (!user) return;
+
+                const fullName = prompt(
+                    'Enter full name:',
+                    user.fullName || ''
+                );
+
+                if (fullName === null) return;
+
+                if (!fullName.trim()) {
+                    alert('Full name is required');
+                    return;
+                }
+
+                try {
+                    const res = await fetch(
+                        `/api/admin/users/${userId}/full-name`,
+                        {
+                            method: 'PATCH',
+                            headers: authHeaders,
+                            body: JSON.stringify({
+                                fullName: fullName.trim()
+                            })
+                        }
+                    );
+
+                    const data = await res.json();
+
+                    if (data.ok) {
+                        await fetchAdminUsers();
+                    } else {
+                        alert(data.message);
+                    }
+                } catch (error) {
+                    console.error(error);
+                    alert('Error updating full name');
+                }
+            });
+        });
     }
 
     window.openAdminResetModal = (userId, username) => {

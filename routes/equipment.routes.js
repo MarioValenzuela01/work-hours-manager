@@ -211,11 +211,20 @@ router.get("/:nfcCode/current", async (req, res) => {
             equipment._id
         );
 
+        const user = await User.findById(req.userId)
+            .select("username fullName");
+
+        if (!user) {
+            return res.status(401).json({
+                message: "User not found"
+            });
+        }
+
         return res.json({
             equipment,
-            usage
+            usage,
+            operatorName: user.fullName || user.username
         });
-
     } catch (error) {
 
         console.error(
@@ -276,7 +285,7 @@ router.post("/:nfcCode/start", async (req, res) => {
 
             operatorId: user._id,
 
-            operatorName: user.username,
+            operatorName: user.fullName || user.username,
 
             startTime: new Date(),
 

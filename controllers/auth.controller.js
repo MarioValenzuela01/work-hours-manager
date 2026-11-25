@@ -3,11 +3,14 @@ const jwt = require('jsonwebtoken');   // 👈 AGREGAR ESTA LINEA
 const User = require('../models/user.model');
 
 const register = async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, fullName } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ ok: false, message: 'username and password required' });
-  }
+  if (!username || !password || typeof fullName !== 'string' || !fullName.trim()) {
+    return res.status(400).json({
+        ok: false,
+        message: 'Full name, username and password are required'
+    });
+}
 
   const existing = await User.findOne({ username });
   if (existing) {
@@ -16,7 +19,11 @@ const register = async (req, res) => {
 
   const passwordHash = bcrypt.hashSync(password, 10);
 
-  await User.create({ username, passwordHash });
+  await User.create({
+    username,
+    fullName: fullName.trim(),
+    passwordHash
+});
   return res.status(201).json({ ok: true, message: 'User created' });
 };
 
