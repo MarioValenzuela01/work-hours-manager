@@ -34,7 +34,28 @@ const photoRoutes = require("./routes/photo.Routes");
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Cache control policy
+app.use((req, res, next) => {
+    const extension = path.extname(req.path).toLowerCase();
+
+    if (
+        req.path.startsWith('/api/') ||
+        req.path.startsWith('/inspection/') ||
+        extension === '.pdf'
+    ) {
+        res.setHeader('Cache-Control', 'private, no-store');
+    } else {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+
+    next();
+});
+
+app.use(express.static(path.join(__dirname, 'public'), {
+    etag: true,
+    lastModified: true
+}));
 // Swagger UI - Development only
 if (process.env.NODE_ENV === "development") {
     app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
